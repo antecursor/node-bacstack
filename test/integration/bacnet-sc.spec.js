@@ -384,14 +384,20 @@ describe('bacstack - BACnet/SC integration', function() {
   });
 
   it('connects to a BACnet/SC hub over WebSocket/TLS with mTLS', () => {
-    const client = createClient(hub, '020000000001');
+    const client = createClient(hub, '020000000001', {
+      ca: [path.join(CERT_DIR, 'ca.pem')]
+    });
     clients.push(client);
     return waitForEvent(client, 'open').then((peer) => {
+      const status = client.getTransportStatus();
       expect(peer.vmac).to.equal(hub.vmac);
+      expect(status.connected).to.equal(true);
+      expect(status.peer.vmac).to.equal(hub.vmac);
+      expect(status.pendingSends).to.equal(0);
     });
   });
 
-  it('rejects connections without the configured client certificate', () => {
+  it('fails fast without a configured client certificate', () => {
     const client = createClient(hub, '020000000001', {
       cert: undefined,
       key: undefined,
@@ -399,7 +405,28 @@ describe('bacstack - BACnet/SC integration', function() {
     });
     clients.push(client);
     return waitForEvent(client, 'error').then((err) => {
-      expect(err.code).to.equal('BACNET_SC_SOCKET_ERROR');
+      expect(err.code).to.equal('BACNET_SC_CLIENT_CERT_REQUIRED');
+    });
+  });
+
+  it('fails over to the next configured hub without emitting a transient error', () => {
+    const diagnostics = [];
+    const client = createClient(hub, '020000000001', {
+      hubUrl: undefined,
+      hubUrls: ['wss://127.0.0.1:1', hub.url],
+      reconnectMin: 10,
+      reconnectMax: 20,
+      webSocketWaitTimeout: 500
+    });
+    clients.push(client);
+    client.on('diagnostic', (event) => diagnostics.push(event));
+    return waitForEvent(client, 'open', 5000).then((peer) => {
+      const status = client.getTransportStatus();
+      expect(peer.vmac).to.equal(hub.vmac);
+      expect(status.hubUrl).to.equal(hub.url);
+      expect(status.hubIndex).to.equal(1);
+      expect(diagnostics.some((event) => event.code === 'reconnect')).to.equal(true);
+      expect(status.lastError.code).to.equal('BACNET_SC_SOCKET_ERROR');
     });
   });
 

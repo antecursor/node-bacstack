@@ -11,7 +11,7 @@ const bacnet = require('bacstack');
 
 const client = new bacnet({
   transport: 'bacnet-sc',
-  hubUrl: 'wss://localhost:4443',
+  hubUrls: ['wss://primary.example:4443', 'wss://failover.example:4443'],
   vmac: '020000000101',
   uuid: '02000000-0101-4222-8333-020000000101',
   cert: 'docker/bacnet-sc/certs/node-bacstack.pem',
@@ -21,6 +21,17 @@ const client = new bacnet({
 ```
 
 The transport opens a WebSocket/TLS connection using the BACnet/SC hub subprotocol, sends a Connect-Request, waits for Connect-Accept, then encapsulates bare BACnet NPDUs in BACnet/SC BVLL messages. The public service APIs (`whoIs`, `readProperty`, `readPropertyMultiple`, `writeProperty`, `readRange`) are unchanged.
+
+For production edge-agent usage, the BACnet/SC transport accepts:
+
+- `hubUrl` / `primaryHubUrl` plus `failoverHubUrl`, or an ordered `hubUrls` / `hubs` array.
+- `cert`, `key`, `ca`, or `pfx` as file paths, PEM strings, Buffers, or CA arrays.
+- `passphrase`, `servername`, `tlsOptions`, `tlsVersion`, `tlsMinVersion`, and `tlsMaxVersion` for site-specific TLS policy.
+- `webSocketWaitTimeout`, `connectionWaitTimeout`, `heartbeatInterval`, `disconnectTimeout`, `reconnectMin`, and `reconnectMax`.
+
+`requireClientCertificate` defaults to `true` for BACnet/SC. Transient connect failures are reported as `diagnostic` and `reconnect` events by default so an edge agent can fail over without crashing on an unhandled `error`; set `emitTransientErrors: true` to also emit those retryable failures as `error`.
+
+Use `client.getTransportStatus()` to read a safe status snapshot for agent health reporting. It includes state, connected flag, current hub URL/index, configured hub list, VMAC/UUID, peer hub information, pending send count, reconnect delay/attempts, timestamps, and the latest diagnostic/error metadata.
 
 ## Java Reference Stack
 
@@ -90,6 +101,8 @@ The implemented BACnet/SC transport supports:
 - Heartbeat request/ack.
 - Clean Disconnect-Request / Disconnect-ACK.
 - Reconnect with backoff after socket loss.
+- Ordered primary/failover hub selection.
+- Agent-facing transport status snapshots.
 - Diagnostics for connect timeout, TLS/socket failure, WebSocket rejection, malformed SC messages, BVLC-Result NAKs, unsupported SC service messages, send queue overflow, and reconnect state.
 
 The fast integration test verifies these BACnet services through BACnet/SC routing:
@@ -101,12 +114,14 @@ The fast integration test verifies these BACnet services through BACnet/SC routi
 - ReadRange.
 - mTLS certificate rejection.
 - Reconnect after hub-side connection drop.
+- Primary/failover hub selection after a transient connect failure.
+- Transport status reporting for agent health.
 
 ## Known Limitations
 
 - The automated `npm run test:sc` suite uses a local mock BACnet/SC hub. It verifies the node-bacstack SC transport and BACnet service flow, but it does not yet assert the full Java reference stack end to end.
 - The Java reference stack Compose service is scaffolded for manual interoperability testing. A deterministic Java object fixture still needs to be selected or scripted before the full acceptance suite can assert Java ReadProperty, RPM, WriteProperty, and ReadRange values automatically.
-- Direct Connect, address resolution, advertisement handling, hub failover selection, and secure path header options are not implemented beyond graceful diagnostics.
+- Direct Connect, address resolution, advertisement handling, and secure path header options are not implemented beyond graceful diagnostics.
 - BACnet/SC VMACs are represented as 12-character lowercase hex strings in node-bacstack events and service address arguments.
 - The transport currently connects as a BACnet/SC node to a hub. It does not implement a hub, node switch, or router.
 
