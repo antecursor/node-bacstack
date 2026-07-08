@@ -19,6 +19,11 @@ npm install --save bacstack
 
 The API documentation is available under **[fh1ch.github.io/node-bacstack](https://fh1ch.github.io/node-bacstack)**.
 
+BACnet/SC is available as an experimental transport option beneath the existing
+service API. See [BACNET_SC.md](BACNET_SC.md) for architecture notes, Docker
+test-bench commands, certificate generation, supported PoC services, and known
+limitations.
+
 ### Features
 
 The BACNET standard defines a wide variety of services as part of it's

@@ -8,6 +8,10 @@
     "lint": "jshint lib/ test/ index.js && jscs lib/ test/ index.js",
     "test": "istanbul cover --dir reports/coverage node_modules/mocha/bin/_mocha -- test/unit/*.spec.js",
     "integration": "istanbul cover --dir reports/coverage node_modules/mocha/bin/_mocha -- test/integration/*.spec.js",
+    "test:sc": "node_modules/mocha/bin/_mocha -- test/integration/bacnet-sc.spec.js",
+    "compose:sc:up": "docker compose -f docker-compose.bacnet-sc.yml up --build -d",
+    "compose:sc:down": "docker compose -f docker-compose.bacnet-sc.yml down -v",
+    "example:sc": "node examples/bacnet-sc.js",
     "compliance": "istanbul cover --dir reports/coverage node_modules/mocha/bin/_mocha -- test/compliance/*.spec.js",
     "docs": "jsdoc -d ./docs -t node_modules/docdash ./lib ./index.js ./README.md"
   },

@@ -1,0 +1,54 @@
+services:
+  sc-certs:
+    image: alpine:3.20
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - sc-certs:/certs
+    command:
+      - /bin/sh
+      - -lc
+      - apk add --no-cache bash openssl >/dev/null && ./scripts/generate-sc-certs.sh /certs
+
+  bacnet-sc-reference:
+    build:
+      context: .
+      dockerfile: docker/bacnet-sc/Dockerfile.reference
+    depends_on:
+      sc-certs:
+        condition: service_completed_successfully
+    ports:
+      - "4443:4443"
+      - "4444:4444"
+      - "4445:4445"
+    volumes:
+      - sc-reference:/opt/bacnet-sc-reference
+      - sc-certs:/certs:ro
+      - ./docker/bacnet-sc/reference-stack:/reference-stack:ro
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /opt/bacnet-sc-reference/Application && test -f /certs/hub.pem"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  node-bacstack-sc-runner:
+    image: node:20-bookworm
+    profiles:
+      - test
+    working_dir: /workspace
+    depends_on:
+      bacnet-sc-reference:
+        condition: service_healthy
+    environment:
+      BACNET_SC_HUB_URL: wss://bacnet-sc-reference:4443
+      BACNET_SC_NODE_BACSTACK_PEM: /certs/node-bacstack.pem
+      BACNET_SC_NODE_BACSTACK_KEY: /certs/node-bacstack.key
+      BACNET_SC_CA_PEM: /certs/ca.pem
+    volumes:
+      - .:/workspace
+      - sc-certs:/certs:ro
+    command: ["npm", "run", "example:sc"]
+
+volumes:
+  sc-certs:
+  sc-reference:

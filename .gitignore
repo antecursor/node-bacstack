@@ -2,3 +2,6 @@ node_modules/
 npm-debug.log
 reports/
 docs/
+.DS_Store
+docker/bacnet-sc/certs/
+docker/bacnet-sc/reference-stack/

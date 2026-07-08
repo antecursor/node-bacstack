@@ -1,0 +1,19 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends bash ca-certificates curl git openjdk-17-jre-headless unzip \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt/node-bacstack-sc
+
+COPY docker/bacnet-sc/download-reference-stack.sh /usr/local/bin/download-reference-stack
+COPY docker/bacnet-sc/run-reference-stack.sh /usr/local/bin/run-reference-stack
+COPY docker/bacnet-sc/TestCombo.properties /opt/node-bacstack-sc/TestCombo.properties
+
+RUN chmod +x /usr/local/bin/download-reference-stack /usr/local/bin/run-reference-stack \
+  && mkdir -p /opt/bacnet-sc-reference
+
+EXPOSE 4443 4444 4445
+
+ENTRYPOINT ["run-reference-stack"]
+CMD ["config/node-bacstack-TestCombo.properties"]
