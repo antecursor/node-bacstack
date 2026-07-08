@@ -1,7 +1,7 @@
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends bash ca-certificates curl git openjdk-17-jre-headless unzip \
+  && apt-get install -y --no-install-recommends bash ca-certificates curl git openjdk-17-jdk-headless unzip \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/node-bacstack-sc
@@ -9,6 +9,8 @@ WORKDIR /opt/node-bacstack-sc
 COPY docker/bacnet-sc/download-reference-stack.sh /usr/local/bin/download-reference-stack
 COPY docker/bacnet-sc/run-reference-stack.sh /usr/local/bin/run-reference-stack
 COPY docker/bacnet-sc/TestCombo.properties /opt/node-bacstack-sc/TestCombo.properties
+COPY docker/bacnet-sc/JavaFixture.properties /opt/node-bacstack-sc/JavaFixture.properties
+COPY docker/bacnet-sc/java-fixture /opt/node-bacstack-sc/java-fixture
 
 RUN chmod +x /usr/local/bin/download-reference-stack /usr/local/bin/run-reference-stack \
   && mkdir -p /opt/bacnet-sc-reference
@@ -16,4 +18,4 @@ RUN chmod +x /usr/local/bin/download-reference-stack /usr/local/bin/run-referenc
 EXPOSE 4443 4444 4445
 
 ENTRYPOINT ["run-reference-stack"]
-CMD ["config/node-bacstack-TestCombo.properties"]
+CMD ["config/node-bacstack-JavaFixture.properties"]

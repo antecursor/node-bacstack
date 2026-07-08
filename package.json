@@ -9,6 +9,8 @@
     "test": "istanbul cover --dir reports/coverage node_modules/mocha/bin/_mocha -- test/unit/*.spec.js",
     "integration": "istanbul cover --dir reports/coverage node_modules/mocha/bin/_mocha -- test/integration/*.spec.js",
     "test:sc": "node_modules/mocha/bin/_mocha -- test/integration/bacnet-sc.spec.js",
+    "test:sc:java": "./scripts/run-sc-java-fixture.sh",
+    "test:sc:java:client": "node scripts/bacnet-sc-java-fixture-test.js",
     "compose:sc:up": "docker compose -f docker-compose.bacnet-sc.yml up --build -d",
     "compose:sc:down": "docker compose -f docker-compose.bacnet-sc.yml down -v",
     "example:sc": "node examples/bacnet-sc.js",

@@ -35,7 +35,7 @@ Use `client.getTransportStatus()` to read a safe status snapshot for agent healt
 
 ## Java Reference Stack
 
-The BACnet/SC Java Reference Stack is not vendored into this repository. Docker downloads the SourceForge snapshot during image build.
+The BACnet/SC Java Reference Stack is not vendored into this repository. Docker downloads or reuses a SourceForge snapshot at container startup, then compiles the local deterministic fixture in `docker/bacnet-sc/java-fixture` against the downloaded reference stack classes.
 
 The upstream distribution is configured with text `.properties` files and runs examples with:
 
@@ -44,7 +44,7 @@ The upstream distribution is configured with text `.properties` files and runs e
 ./Application config/TestCombo.properties
 ```
 
-During this implementation, raw SourceForge files were reachable, but `git clone --depth 1` disconnected and the advertised `tarball?path=` endpoint returned an HTML snapshot page. The Dockerfile therefore uses the direct SourceForge code snapshot URL for the current `d40c80` master snapshot.
+During this implementation, raw SourceForge files were reachable, but `git clone --depth 1` was not always reliable. The Docker helper first uses a mounted local copy or cached Docker volume when present, otherwise it discovers the current SourceForge code snapshot URL and falls back to `git clone`.
 
 ## Commands
 
@@ -71,6 +71,14 @@ Run the fast BACnet/SC transport interoperability suite:
 ```sh
 npm run test:sc
 ```
+
+Run the deterministic Java reference-stack service fixture:
+
+```sh
+npm run test:sc:java
+```
+
+This starts the Java reference stack hub plus a deterministic Java fixture node and asserts Who-Is/I-Am discovery, ReadProperty, ReadPropertyMultiple, WriteProperty/readback, and ReadRange from node-bacstack. The fixture uses the reference stack's plain WebSocket test mode for CI stability; the fast `npm run test:sc` suite covers TLS/mTLS behavior with the local mock hub.
 
 Run the example against a hub:
 
@@ -117,17 +125,24 @@ The fast integration test verifies these BACnet services through BACnet/SC routi
 - Primary/failover hub selection after a transient connect failure.
 - Transport status reporting for agent health.
 
+The Java fixture test verifies the same client service path against the Java reference stack with deterministic Java-owned objects:
+
+- Device `777001` at VMAC `777777777001`.
+- Analog Value `2:1`, initial Present_Value `12.5`.
+- WriteProperty readback value `42.25`.
+- Trend Log `20:1` ReadRange values `1.25`, `2.5`, `3.75`.
+
 ## Known Limitations
 
-- The automated `npm run test:sc` suite uses a local mock BACnet/SC hub. It verifies the node-bacstack SC transport and BACnet service flow, but it does not yet assert the full Java reference stack end to end.
-- The Java reference stack Compose service is scaffolded for manual interoperability testing. A deterministic Java object fixture still needs to be selected or scripted before the full acceptance suite can assert Java ReadProperty, RPM, WriteProperty, and ReadRange values automatically.
+- The automated `npm run test:sc` suite uses a local mock BACnet/SC hub. It verifies TLS/mTLS, node-bacstack SC transport behavior, and BACnet service flow without the Java reference stack.
+- `npm run test:sc:java` asserts deterministic Java reference-stack ReadProperty, RPM, WriteProperty/readback, and ReadRange behavior, but it uses plain `ws://` because the reference stack's WSS server shows nondeterministic external WebSocket handshake delays from a separate Docker client. Use the WSS example path for manual TLS smoke testing.
 - Direct Connect, address resolution, advertisement handling, and secure path header options are not implemented beyond graceful diagnostics.
 - BACnet/SC VMACs are represented as 12-character lowercase hex strings in node-bacstack events and service address arguments.
 - The transport currently connects as a BACnet/SC node to a hub. It does not implement a hub, node switch, or router.
 
 ## Next Interoperability Target
 
-After the Java reference stack test fixture is fully scripted, the next target should be a Niagara or JACE BACnet/SC hub. Validate with a vendor hub using the same node-bacstack API surface:
+The next target should be a Niagara or JACE BACnet/SC hub. Validate with a vendor hub using the same node-bacstack API surface:
 
 1. Import the local CA or issue an operational node certificate from the site CA.
 2. Connect with `transport: 'bacnet-sc'` and the Niagara hub URL.
