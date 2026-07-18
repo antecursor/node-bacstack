@@ -30,6 +30,21 @@ describe('bacstack - Services layer AtomicWriteFile unit', () => {
       blocks: [[12, 12], [12, 12]]
     });
   });
+
+  it('should decode octet strings from a non-zero APDU offset', () => {
+    const buffer = utils.getBuffer();
+    const offset = 11;
+    buffer.offset = offset;
+    baServices.atomicWriteFile.encode(buffer, true, {type: 12, instance: 51}, 5, [[12, 12]]);
+    const result = baServices.atomicWriteFile.decode(buffer.buffer, offset, buffer.offset - offset);
+    delete result.len;
+    expect(result).to.deep.equal({
+      objectId: {type: 12, instance: 51},
+      isStream: true,
+      position: 5,
+      blocks: [[12, 12]]
+    });
+  });
 });
 
 describe('AtomicWriteFileAcknowledge', () => {

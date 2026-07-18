@@ -17,4 +17,12 @@ describe('bacstack - Services layer LifeSafetyOperation unit', () => {
       targetObjectId: {type: 0, instance: 77}
     });
   });
+
+  it('should reject a truncated target object identifier', () => {
+    const buffer = utils.getBuffer();
+    baServices.lifeSafetyOperation.encode(buffer, 8, 'User01', 7, {type: 0, instance: 77});
+    const truncated = Buffer.from(buffer.buffer.subarray(0, buffer.offset - 1));
+    expect(() => baServices.lifeSafetyOperation.decode(truncated, 0, truncated.length)).not.to.throw();
+    expect(baServices.lifeSafetyOperation.decode(truncated, 0, truncated.length)).to.equal(undefined);
+  });
 });

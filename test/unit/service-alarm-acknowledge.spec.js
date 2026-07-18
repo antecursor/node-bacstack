@@ -69,4 +69,25 @@ describe('bacstack - Services layer AlarmAcknowledge unit', () => {
       acknowledgeTimeStamp: ackTime
     });
   });
+
+  it('should reject every truncated datetime payload without throwing', () => {
+    const buffer = utils.getBuffer();
+    const eventTime = new Date(2017, 7, 21, 15, 13, 34, 0);
+    const ackTime = new Date(2017, 7, 21, 16, 14, 35, 0);
+    baServices.alarmAcknowledge.encode(
+      buffer,
+      57,
+      {type: 0, instance: 33},
+      5,
+      'Alarm Acknowledge Test',
+      {value: eventTime, type: baEnum.TimeStamp.DATETIME},
+      {value: ackTime, type: baEnum.TimeStamp.DATETIME}
+    );
+
+    for (let length = 0; length < buffer.offset; length++) {
+      const truncated = Buffer.from(buffer.buffer.subarray(0, length));
+      expect(() => baServices.alarmAcknowledge.decode(truncated, 0, truncated.length)).not.to.throw();
+      expect(baServices.alarmAcknowledge.decode(truncated, 0, truncated.length)).to.equal(undefined);
+    }
+  });
 });

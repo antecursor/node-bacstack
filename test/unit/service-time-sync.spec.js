@@ -16,4 +16,21 @@ describe('bacstack - Services layer TimeSync unit', () => {
       value: date
     });
   });
+
+  it('should honor the APDU boundary from a non-zero offset', () => {
+    const buffer = utils.getBuffer();
+    const offset = 11;
+    const date = new Date(2026, 6, 18, 14, 35, 27, 990);
+    buffer.offset = offset;
+    baServices.timeSync.encode(buffer, date);
+    const length = buffer.offset - offset;
+
+    const result = baServices.timeSync.decode(buffer.buffer, offset, length);
+    expect(result.value).to.deep.equal(date);
+    for (let truncatedLength = 0; truncatedLength < length; truncatedLength++) {
+      expect(() => baServices.timeSync.decode(buffer.buffer, offset, truncatedLength)).not.to.throw();
+      expect(baServices.timeSync.decode(buffer.buffer, offset, truncatedLength)).to.equal(undefined);
+    }
+    expect(baServices.timeSync.decode(buffer.buffer, offset, length + 1)).to.equal(undefined);
+  });
 });

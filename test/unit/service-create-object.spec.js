@@ -88,4 +88,17 @@ describe('bacstack - Services layer CreateObject unit', () => {
       ]
     });
   });
+
+  it('should reject a property value with a missing closing tag', () => {
+    const buffer = utils.getBuffer();
+    baServices.createObject.encode(buffer, {type: 1, instance: 10}, [{
+      property: {id: 81, index: 0xFFFFFFFF},
+      value: [{type: 2, value: 1}],
+      priority: 0
+    }]);
+    const truncated = Buffer.from(buffer.buffer.subarray(0, buffer.offset - 2));
+    const decode = () => baServices.createObject.decode(truncated, 0, truncated.length);
+    expect(decode).not.to.throw();
+    expect(decode()).to.equal(undefined);
+  });
 });
