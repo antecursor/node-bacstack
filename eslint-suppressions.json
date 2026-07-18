@@ -1,0 +1,102 @@
+{
+  "lib/asn1.js": {
+    "no-constant-binary-expression": {
+      "count": 3
+    },
+    "no-unused-vars": {
+      "count": 9
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "lib/bvlc.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "lib/client.js": {
+    "@stylistic/indent": {
+      "count": 19
+    },
+    "@stylistic/no-trailing-spaces": {
+      "count": 2
+    },
+    "no-unused-vars": {
+      "count": 13
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "lib/npdu.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "lib/services/atomic-read-file.js": {
+    "no-useless-assignment": {
+      "count": 5
+    }
+  },
+  "lib/services/atomic-write-file.js": {
+    "no-useless-assignment": {
+      "count": 2
+    }
+  },
+  "lib/services/get-enrollment-summary.js": {
+    "no-unused-vars": {
+      "count": 2
+    }
+  },
+  "lib/services/i-am-broadcast.js": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "lib/services/read-range.js": {
+    "no-case-declarations": {
+      "count": 2
+    }
+  },
+  "lib/services/time-sync.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "test/integration/time-sync-utc.spec.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "test/integration/time-sync.spec.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "test/integration/unconfirmed-event-notification.spec.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "test/integration/unconfirmed-private-transfer.spec.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "test/integration/who-is.spec.js": {
+    "no-unused-vars": {
+      "count": 6
+    }
+  },
+  "test/unit/asn1.spec.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "test/unit/service-write-property-multiple.spec.js": {
+    "no-unused-vars": {
+      "count": 2
+    }
+  }
+}
