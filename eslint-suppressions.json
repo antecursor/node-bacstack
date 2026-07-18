@@ -10,28 +10,15 @@
       "count": 1
     }
   },
-  "lib/bvlc.js": {
-    "no-unused-vars": {
-      "count": 1
-    }
-  },
   "lib/client.js": {
     "@stylistic/indent": {
-      "count": 19
+      "count": 11
     },
     "@stylistic/no-trailing-spaces": {
-      "count": 2
+      "count": 1
     },
     "no-unused-vars": {
       "count": 13
-    },
-    "no-useless-assignment": {
-      "count": 1
-    }
-  },
-  "lib/npdu.js": {
-    "no-unused-vars": {
-      "count": 1
     }
   },
   "lib/services/atomic-read-file.js": {
@@ -49,19 +36,9 @@
       "count": 2
     }
   },
-  "lib/services/i-am-broadcast.js": {
-    "no-useless-assignment": {
-      "count": 1
-    }
-  },
   "lib/services/read-range.js": {
     "no-case-declarations": {
       "count": 2
-    }
-  },
-  "lib/services/time-sync.js": {
-    "no-unused-vars": {
-      "count": 1
     }
   },
   "test/integration/time-sync-utc.spec.js": {

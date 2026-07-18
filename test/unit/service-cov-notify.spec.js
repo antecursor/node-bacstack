@@ -84,9 +84,9 @@ describe('bacstack - Services layer COVNotify unit', () => {
           ]
         },
         {
-          priority: 0,
+          priority: 8,
           property: {
-            index: 0xFFFFFFFF,
+            index: 0,
             id: 82
           },
           value: [

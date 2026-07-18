@@ -15,6 +15,14 @@ describe('bacstack - NPDU layer', () => {
     expect(result).to.equal(undefined);
   });
 
+  it('should reject truncated NPDU headers and addresses', () => {
+    const packet = Buffer.from([1, 0x28, 0x03, 0xE8, 3, 1, 2, 3, 0x03, 0xE8, 3, 1, 2, 3, 0xFF]);
+    for (let length = 0; length < packet.length; length++) {
+      expect(baNpdu.decode(packet, 0, length)).to.equal(undefined);
+    }
+    expect(baNpdu.decode(packet, 0, packet.length)).to.have.property('len', packet.length);
+  });
+
   it('should successfully encode and decode a basic NPDU package', () => {
     const buffer = utils.getBuffer();
     baNpdu.encode(buffer, 1);

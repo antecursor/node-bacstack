@@ -5,6 +5,28 @@ const utils       = require('./utils');
 const baApdu      = require('../../lib/apdu');
 
 describe('bacstack - APDU layer', () => {
+  it('should reject truncated APDU headers', () => {
+    const cases = [
+      {decode: baApdu.decodeConfirmedServiceRequest, bytes: [0, 0, 1, 12]},
+      {decode: baApdu.decodeConfirmedServiceRequest, bytes: [8, 0, 1, 2, 3, 12]},
+      {decode: baApdu.decodeUnconfirmedServiceRequest, bytes: [16, 8]},
+      {decode: baApdu.decodeSimpleAck, bytes: [32, 1, 12]},
+      {decode: baApdu.decodeComplexAck, bytes: [48, 1, 12]},
+      {decode: baApdu.decodeComplexAck, bytes: [56, 1, 2, 3, 12]},
+      {decode: baApdu.decodeSegmentAck, bytes: [64, 1, 2, 3]},
+      {decode: baApdu.decodeError, bytes: [80, 1, 12]},
+      {decode: baApdu.decodeAbort, bytes: [112, 1, 2]}
+    ];
+
+    cases.forEach((entry) => {
+      const packet = Buffer.from(entry.bytes);
+      for (let length = 0; length < packet.length; length++) {
+        expect(entry.decode(packet, 0, length)).to.equal(undefined);
+      }
+      expect(entry.decode(packet, 0, packet.length)).to.be.an('object');
+    });
+  });
+
   describe('decodedType', () => {
     it('should correctly encode and decode a package', () => {
       const value = [0, 128, 4, 5];

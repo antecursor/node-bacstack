@@ -5,6 +5,14 @@ const utils       = require('./utils');
 const baBvlc      = require('../../lib/bvlc');
 
 describe('bacstack - BVLC layer', () => {
+  it('should expose and enforce the BVLC header length', () => {
+    expect(baBvlc.BVLC_HEADER_LENGTH).to.equal(4);
+    const packet = Buffer.from([0x81, 0x0A, 0x00, 0x04]);
+    for (let length = 0; length < packet.length; length++) {
+      expect(baBvlc.decode(packet.subarray(0, length), 0)).to.equal(undefined);
+    }
+  });
+
   it('should successfuly encode and decode a package', () => {
     const buffer = utils.getBuffer();
     baBvlc.encode(buffer.buffer, 10, 1482);
@@ -25,6 +33,11 @@ describe('bacstack - BVLC layer', () => {
       func: 4,
       msgLength: 1482
     });
+  });
+
+  it('should reject a forwarded package shorter than its function header', () => {
+    const packet = Buffer.from([0x81, 0x04, 0x00, 0x04]);
+    expect(baBvlc.decode(packet, 0)).to.equal(undefined);
   });
 
   it('should fail if invalid BVLC type', () => {
