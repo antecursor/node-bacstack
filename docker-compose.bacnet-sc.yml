@@ -17,6 +17,9 @@ services:
     depends_on:
       sc-certs:
         condition: service_completed_successfully
+    environment:
+      BACNET_SC_REF_COMMIT: d40c80b8afa108a8806e997c99c6e9c94741b5bb
+      BACNET_SC_REF_TARGET_DIR: /opt/bacnet-sc-reference/d40c80b8afa108a8806e997c99c6e9c94741b5bb
     ports:
       - "4443:4443"
       - "4444:4444"
@@ -26,13 +29,13 @@ services:
       - sc-certs:/certs:ro
       - ./docker/bacnet-sc/reference-stack:/reference-stack:ro
     healthcheck:
-      test: ["CMD-SHELL", "test -f /opt/bacnet-sc-reference/Application && test -f /certs/hub.pem"]
+      test: ["CMD-SHELL", "test -f /opt/bacnet-sc-reference/d40c80b8afa108a8806e997c99c6e9c94741b5bb/Application && test -f /certs/hub.pem"]
       interval: 10s
       timeout: 5s
       retries: 12
 
   node-bacstack-sc-runner:
-    image: node:20-bookworm
+    image: node:22.13.0-bookworm
     profiles:
       - test
     working_dir: /workspace

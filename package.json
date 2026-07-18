@@ -8,9 +8,12 @@
     "lib/",
     "BACNET_SC.md",
     "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
     "FAQ.md",
     "LICENSE.md",
-    "README.md"
+    "README.md",
+    "SECURITY.md"
   ],
   "scripts": {
     "lint": "eslint .",
@@ -58,7 +61,7 @@
   },
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/fh1ch/node-bacstack/issues"
+    "url": "https://github.com/antecursor/node-bacstack/issues"
   },
   "homepage": "https://github.com/antecursor/node-bacstack#readme",
   "dependencies": {

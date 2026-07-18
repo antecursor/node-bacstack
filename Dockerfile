@@ -1,14 +1,14 @@
-FROM node:carbon-alpine
+FROM node:22.13.0-alpine
 
 # Set working directory
 WORKDIR /bacstack
 
-# Install dependencies
-COPY package.json .
-RUN npm install
+# Install the exact locked dependency graph
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts
 
 # Add node-bacstack
-Add . .
+COPY . .
 
 # Run compliance tests
-CMD npm run compliance
+CMD ["npm", "run", "compliance"]

@@ -158,12 +158,12 @@ Run the Docker-based Java reference fixture:
 npm run test:sc:java
 ```
 
-The Java reference implementation is not vendored. Unless an existing local or
-cached copy is available, the Docker setup downloads a SourceForge snapshot and
-therefore requires network access. The current helper follows the upstream
-master snapshot unless `BACNET_SC_REF_ZIP_URL` or a local reference directory is
-provided; that is not reproducible third-party provenance and must be tightened
-before it can serve as a release gate.
+The Java reference implementation is not vendored. Unless a verified local or
+cached copy is available, the Docker setup fetches the full SourceForge Git
+commit pinned by `BACNET_SC_REF_COMMIT` and verifies the fetched object ID before
+using it. The Compose fixture currently pins
+`d40c80b8afa108a8806e997c99c6e9c94741b5bb`; changing the fixture requires an
+explicit full commit ID and a review of the resulting interoperability evidence.
 
 For interactive work, start and stop the reference bench with:
 
