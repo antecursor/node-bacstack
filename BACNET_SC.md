@@ -1,152 +1,219 @@
-# BACnet/SC Development Notes
+# BACnet/SC experimental transport
 
-## Architecture
+BACnet Secure Connect (BACnet/SC) is implemented as an alternative transport
+beneath the existing BACnet application and service layers. BACnet/IP remains
+the default.
 
-BACnet/SC is implemented as a transport beneath the existing BACnet application and service layers. Existing BACnet/IP remains the default transport.
+> [!WARNING]
+> This transport is an experimental node-to-hub implementation. It has not been
+> independently security-audited, certified, soak-tested for production, or
+> validated against an operational vendor hub. The current evidence is suitable
+> for controlled interoperability work, not a production-readiness claim.
 
-Use BACnet/SC with:
+## Connection example
+
+Install this fork as described in [README.md](README.md), then configure a node:
 
 ```js
-const bacnet = require('bacstack');
+const Bacnet = require('bacstack');
 
-const client = new bacnet({
+const client = new Bacnet({
   transport: 'bacnet-sc',
   hubUrls: ['wss://primary.example:4443', 'wss://failover.example:4443'],
   vmac: '020000000101',
   uuid: '02000000-0101-4222-8333-020000000101',
-  cert: 'docker/bacnet-sc/certs/node-bacstack.pem',
-  key: 'docker/bacnet-sc/certs/node-bacstack.key',
-  ca: 'docker/bacnet-sc/certs/ca.pem'
+  cert: '/run/secrets/bacnet-sc-node.pem',
+  key: '/run/secrets/bacnet-sc-node.key',
+  ca: '/run/secrets/site-ca.pem'
 });
+
+client.on('diagnostic', (event) => console.log('BACnet/SC diagnostic:', event));
+client.on('error', (err) => console.error('BACnet/SC transport error:', err));
 ```
 
-The transport opens a WebSocket/TLS connection using the BACnet/SC hub subprotocol, sends a Connect-Request, waits for Connect-Accept, then encapsulates bare BACnet NPDUs in BACnet/SC BVLL messages. The public service APIs (`whoIs`, `readProperty`, `readPropertyMultiple`, `writeProperty`, `readRange`) are unchanged.
+The transport opens a WebSocket/TLS connection using the BACnet/SC hub
+subprotocol, sends Connect-Request, waits for Connect-Accept, and carries bare
+BACnet NPDUs in BACnet/SC BVLL messages. Existing callback service methods such
+as `whoIs`, `readProperty`, `readPropertyMultiple`, `writeProperty`, and
+`readRange` retain their historical shape.
 
-For production edge-agent usage, the BACnet/SC transport accepts:
+Accepted configuration includes:
 
-- `hubUrl` / `primaryHubUrl` plus `failoverHubUrl`, or an ordered `hubUrls` / `hubs` array.
-- `cert`, `key`, `ca`, or `pfx` as file paths, PEM strings, Buffers, or CA arrays.
-- `passphrase`, `servername`, `tlsOptions`, `tlsVersion`, `tlsMinVersion`, and `tlsMaxVersion` for site-specific TLS policy.
-- `webSocketWaitTimeout`, `connectionWaitTimeout`, `heartbeatInterval`, `disconnectTimeout`, `reconnectMin`, and `reconnectMax`.
+- `hubUrl` or `primaryHubUrl` plus `failoverHubUrl`, or an ordered `hubUrls` or
+  `hubs` array.
+- `cert`, `key`, `ca`, or `pfx` as file paths, PEM text, Buffers, or (for `ca`)
+  an array.
+- `passphrase`, `servername`, `tlsOptions`, `tlsVersion`, `tlsMinVersion`, and
+  `tlsMaxVersion` for TLS policy.
+- `connectionWaitTimeout`, `webSocketWaitTimeout`, `heartbeatInterval`,
+  `heartbeatTimeout`, `disconnectTimeout`, `reconnectMin`, and `reconnectMax`.
+- `sendQueueLimit`, `sendQueueTimeout`, `maxHandshakeBytes`, `maxFramePayload`,
+  and `maxBufferedBytes` for resource bounds.
 
-`requireClientCertificate` defaults to `true` for BACnet/SC. Transient connect failures are reported as `diagnostic` and `reconnect` events by default so an edge agent can fail over without crashing on an unhandled `error`; set `emitTransientErrors: true` to also emit those retryable failures as `error`.
+`requireClientCertificate` defaults to `true` and TLS certificate validation is
+enabled unless `rejectUnauthorized: false` is explicitly supplied. Disabling
+certificate verification is unsafe and should be confined to disposable test
+setups. Plain `ws://` is rejected unless `allowPlain: true` is explicitly set;
+it exists for isolated test fixtures and sends BACnet traffic without TLS.
 
-Use `client.getTransportStatus()` to read a safe status snapshot for agent health reporting. It includes state, connected flag, current hub URL/index, configured hub list, VMAC/UUID, peer hub information, pending send count, reconnect delay/attempts, timestamps, and the latest diagnostic/error metadata.
+Retryable connection failures are emitted as `diagnostic` and `reconnect`
+events by default so failover does not create an unhandled `error` event. Set
+`emitTransientErrors: true` if the application is prepared to handle those as
+`error` events too. `client.getTransportStatus()` returns a snapshot containing
+connection state, current/configured hubs, VMAC/UUID, peer information, queued
+send count, reconnect state, timestamps, and latest diagnostic/error metadata.
+Do not expose that snapshot outside a trusted operations boundary without
+reviewing it for site information.
 
-## Java Reference Stack
+## Safe example
 
-The BACnet/SC Java Reference Stack is not vendored into this repository. Docker downloads or reuses a SourceForge snapshot at container startup, then compiles the local deterministic fixture in `docker/bacnet-sc/java-fixture` against the downloaded reference stack classes.
-
-The upstream distribution is configured with text `.properties` files and runs examples with:
+From a repository checkout, `npm run example:sc` is read-only by default. (The
+example source is not included in the runtime package allowlist.) It performs
+discovery, ReadProperty, and ReadRange. Configure the hub, certificate paths,
+node identity, and read targets with environment variables as needed:
 
 ```sh
-./Application config/TestHub.properties
-./Application config/TestCombo.properties
+BACNET_SC_HUB_URL=wss://hub.example:4443 \
+BACNET_SC_DEVICE_INSTANCE=777001 \
+BACNET_SC_OBJECT_TYPE=2 \
+BACNET_SC_OBJECT_INSTANCE=1 \
+BACNET_SC_TREND_OBJECT_TYPE=20 \
+BACNET_SC_TREND_OBJECT_INSTANCE=1 \
+npm run example:sc
 ```
 
-During this implementation, raw SourceForge files were reachable, but `git clone --depth 1` was not always reliable. The Docker helper first uses a mounted local copy or cached Docker volume when present, otherwise it discovers the current SourceForge code snapshot URL and falls back to `git clone`.
+The default object and property are an Analog Value instance `1` and
+Present_Value; the default trend object is Trend Log instance `1`. Prefer
+setting these explicitly for any shared test environment. Certificate settings
+are `BACNET_SC_NODE_BACSTACK_PEM`, `BACNET_SC_NODE_BACSTACK_KEY`, and
+`BACNET_SC_CA_PEM`.
 
-## Commands
+Writing requires every guard below. The example refuses to write when any value
+is absent, when the discovered VMAC does not match the configured target, or
+when priority is outside 1–16:
 
-Generate local development certificates:
+```sh
+BACNET_SC_ENABLE_WRITE=true \
+BACNET_SC_DEVICE_INSTANCE=777001 \
+BACNET_SC_TARGET_ADDRESS=777777777001 \
+BACNET_SC_OBJECT_TYPE=2 \
+BACNET_SC_OBJECT_INSTANCE=1 \
+BACNET_SC_PROPERTY_ID=85 \
+BACNET_SC_WRITE_VALUE=42.25 \
+BACNET_SC_WRITE_PRIORITY=16 \
+npm run example:sc
+```
+
+The guarded example encodes the write value as a BACnet REAL. Use only a
+dedicated, non-critical point whose type and command-priority behavior you have
+verified, and arrange a rollback before enabling the write.
+
+## Current validation matrix
+
+| Capability | Project-owned TLS mock hub (`test:sc`) | Java reference fixture (`test:sc:java`) |
+| --- | :---: | :---: |
+| WSS and mutual TLS | Yes | No; plain `ws://` only |
+| Connect/Accept and NPDU routing | Yes | Yes |
+| Heartbeat and clean disconnect | Indirect only; mock peer supports both, but no direct assertion | Indirect connection cleanup only |
+| Reconnect after dropped connection | Yes | No |
+| Primary/failover selection | Yes | No |
+| Missing client-certificate configuration rejected | Yes | No |
+| Who-Is / I-Am | Yes | Yes |
+| ReadProperty | Yes | Yes |
+| ReadPropertyMultiple | Yes | Yes |
+| WriteProperty with readback | Yes | Yes |
+| ReadRange | Yes | Yes |
+| Operational vendor hub | No | No |
+
+The mock suite uses a hub and peer implementation from this repository. It is
+valuable for transport behavior and regressions but is not independent protocol
+evidence. The Java fixture uses a separate BACnet/SC reference implementation
+and deterministic Java-owned objects, but its current plain-WebSocket setup does
+not validate WSS or mutual TLS interoperability.
+
+The deterministic Java objects are:
+
+- Device `777001` at VMAC `777777777001`.
+- Analog Value `2:1`, initial Present_Value `12.5`.
+- WriteProperty readback value `42.25`.
+- Trend Log `20:1`, with ReadRange values `1.25`, `2.5`, and `3.75`.
+
+## Test-bench commands
+
+Generate disposable local certificates:
 
 ```sh
 ./scripts/generate-sc-certs.sh
 ```
 
-Start the BACnet/SC Java reference bench:
-
-```sh
-npm run compose:sc:up
-```
-
-Stop it:
-
-```sh
-npm run compose:sc:down
-```
-
-Run the fast BACnet/SC transport interoperability suite:
+Run the project-owned TLS/mTLS integration suite:
 
 ```sh
 npm run test:sc
 ```
 
-Run the deterministic Java reference-stack service fixture:
+Run the Docker-based Java reference fixture:
 
 ```sh
 npm run test:sc:java
 ```
 
-This starts the Java reference stack hub plus a deterministic Java fixture node and asserts Who-Is/I-Am discovery, ReadProperty, ReadPropertyMultiple, WriteProperty/readback, and ReadRange from node-bacstack. The fixture uses the reference stack's plain WebSocket test mode for CI stability; the fast `npm run test:sc` suite covers TLS/mTLS behavior with the local mock hub.
+The Java reference implementation is not vendored. Unless an existing local or
+cached copy is available, the Docker setup downloads a SourceForge snapshot and
+therefore requires network access. The current helper follows the upstream
+master snapshot unless `BACNET_SC_REF_ZIP_URL` or a local reference directory is
+provided; that is not reproducible third-party provenance and must be tightened
+before it can serve as a release gate.
 
-Run the example against a hub:
+For interactive work, start and stop the reference bench with:
 
 ```sh
-npm run example:sc
+npm run compose:sc:up
+npm run compose:sc:down
 ```
 
-## Certificates
+Generated Compose certificates are stored under `docker/bacnet-sc/certs` and
+ignored by git. Certificates and private keys under `test/fixtures/sc-certs`
+are intentionally public throwaway fixtures for automated tests. Never install
+or trust them outside a disposable test environment.
 
-`scripts/generate-sc-certs.sh` creates:
+## Implemented BACnet/SC scope
 
-- `ca.pem` / `ca.key`
-- `hub.pem` / `hub.key`
-- `java-node.pem` / `java-node.key`
-- `node-bacstack.pem` / `node-bacstack.key`
-
-Generated Compose certificates are written under `docker/bacnet-sc/certs` by default and are not required in git. The checked-in certificates under `test/fixtures/sc-certs` are throwaway test fixtures used by the automated mock-hub integration tests.
-
-The Java reference stack expects unencrypted PKCS#8 private keys (`BEGIN PRIVATE KEY`), which the generator produces with the installed OpenSSL defaults.
-
-## Supported PoC Services
-
-The implemented BACnet/SC transport supports:
-
-- WebSocket/TLS hub connection with mTLS.
+- BACnet/SC node connection to a hub over WSS/mTLS.
 - Connect-Request / Connect-Accept.
-- Encapsulated NPDU send/receive through a hub.
-- Heartbeat request/ack.
-- Clean Disconnect-Request / Disconnect-ACK.
-- Reconnect with backoff after socket loss.
-- Ordered primary/failover hub selection.
-- Agent-facing transport status snapshots.
-- Diagnostics for connect timeout, TLS/socket failure, WebSocket rejection, malformed SC messages, BVLC-Result NAKs, unsupported SC service messages, send queue overflow, and reconnect state.
+- Encapsulated NPDU send and receive through the hub.
+- Heartbeat request/acknowledgment and disconnect request/acknowledgment.
+- Reconnect with backoff and ordered primary/failover selection.
+- Bounded pending-send queue and WebSocket handshake/frame buffers.
+- Agent-facing status, diagnostic, reconnect, open, close, and error events.
 
-The fast integration test verifies these BACnet services through BACnet/SC routing:
+## Known limitations
 
-- Who-Is / I-Am.
-- ReadProperty.
-- ReadPropertyMultiple.
-- WriteProperty with readback.
-- ReadRange.
-- mTLS certificate rejection.
-- Reconnect after hub-side connection drop.
-- Primary/failover hub selection after a transient connect failure.
-- Transport status reporting for agent health.
+- Hub, node-switch, router, and Direct Connect roles are not implemented.
+- Address resolution, advertisements, and secure-path header options are not
+  implemented beyond diagnostics for unsupported messages.
+- VMACs are represented as 12-character lowercase hexadecimal strings in events
+  and service address arguments.
+- WebSocket framing is implemented locally and has not received an independent
+  protocol/security audit.
+- The transport and application parser have not completed hostile-input fuzzing
+  or long-running resource/reconnect soak testing.
+- Queued requests, transaction cancellation, invoke-ID concurrency, segmentation,
+  routed-address handling, and malformed-packet behavior require further
+  production hardening across the shared client stack.
+- No Niagara/JACE or other operational vendor WSS/mTLS result is currently part
+  of the repository evidence.
 
-The Java fixture test verifies the same client service path against the Java reference stack with deterministic Java-owned objects:
+## Next interoperability target
 
-- Device `777001` at VMAC `777777777001`.
-- Analog Value `2:1`, initial Present_Value `12.5`.
-- WriteProperty readback value `42.25`.
-- Trend Log `20:1` ReadRange values `1.25`, `2.5`, `3.75`.
+Use an authorized non-production Niagara/JACE or comparable vendor hub, with a
+dedicated test certificate and objects:
 
-## Known Limitations
-
-- The automated `npm run test:sc` suite uses a local mock BACnet/SC hub. It verifies TLS/mTLS, node-bacstack SC transport behavior, and BACnet service flow without the Java reference stack.
-- `npm run test:sc:java` asserts deterministic Java reference-stack ReadProperty, RPM, WriteProperty/readback, and ReadRange behavior, but it uses plain `ws://` because the reference stack's WSS server shows nondeterministic external WebSocket handshake delays from a separate Docker client. Use the WSS example path for manual TLS smoke testing.
-- Direct Connect, address resolution, advertisement handling, and secure path header options are not implemented beyond graceful diagnostics.
-- BACnet/SC VMACs are represented as 12-character lowercase hex strings in node-bacstack events and service address arguments.
-- The transport currently connects as a BACnet/SC node to a hub. It does not implement a hub, node switch, or router.
-
-## Next Interoperability Target
-
-The next target should be a Niagara or JACE BACnet/SC hub. Validate with a vendor hub using the same node-bacstack API surface:
-
-1. Import the local CA or issue an operational node certificate from the site CA.
-2. Connect with `transport: 'bacnet-sc'` and the Niagara hub URL.
-3. Verify Who-Is/I-Am discovery.
-4. Verify ReadProperty and RPM against a stable Analog Value or Binary Value.
-5. Verify safe WriteProperty/readback against a non-critical writable test point.
-6. Verify Trend Log or Trend Log Multiple `ReadRange` where the device exposes historical data.
+1. Verify WSS/mTLS trust, hostname handling, rejection paths, and certificate
+   rotation.
+2. Verify Who-Is/I-Am and read-only service flow.
+3. Exercise reconnect, failover, heartbeat loss, hub restart, and clean shutdown.
+4. Only then enable guarded WriteProperty against a non-critical test point and
+   verify rollback.
+5. Capture versions, configuration, exact packets, and repeatable results without
+   committing credentials or site-identifying data.

@@ -1,112 +1,150 @@
-# Node BACstack
+# node-bacstack (antecursor fork)
 
-A BACnet protocol stack written in pure JavaScript. BACnet is a protocol to
-interact with building automation devices defined by ASHRAE.
+A JavaScript BACnet protocol stack for communicating with building-automation
+devices. This repository is an independent fork of
+[`fh1ch/node-bacstack`](https://github.com/fh1ch/node-bacstack), extended with an
+experimental BACnet Secure Connect (BACnet/SC) node transport and maintained
+tooling.
 
-[![](https://badge.fury.io/js/bacstack.svg)](http://badge.fury.io/js/bacstack)
-[![](https://travis-ci.org/fh1ch/node-bacstack.svg?branch=master)](https://travis-ci.org/fh1ch/node-bacstack)
-[![](https://coveralls.io/repos/fh1ch/node-bacstack/badge.svg?branch=master)](https://coveralls.io/r/fh1ch/node-bacstack?branch=master)
-[![](https://codeclimate.com/github/fh1ch/node-bacstack/badges/gpa.svg)](https://codeclimate.com/github/fh1ch/node-bacstack)
-[![](https://david-dm.org/fh1ch/node-bacstack/status.svg)](https://david-dm.org/fh1ch/node-bacstack)
+> [!CAUTION]
+> This fork is pre-release software. It is not production-ready, has not
+> completed a security review or vendor interoperability program, and makes no
+> claim of BACnet certification or BTL listing. Use it only in controlled test
+> environments until the remaining hardening work is complete. Do not use it
+> for life-safety, access-control, or other safety-critical functions.
 
-## Usage
+## Install this fork
 
-Add Node BACstack to your project by using:
+Node.js 22.13.0 or newer is required.
 
-``` sh
-npm install --save bacstack
+This fork does not currently document a fork-owned npm package name. The bare
+command `npm install bacstack` resolves the separately published upstream
+package, not necessarily the code in this repository. Install the fork directly
+from GitHub instead:
+
+```sh
+npm install github:antecursor/node-bacstack#bacnet-sc
 ```
 
-The API documentation is available under **[fh1ch.github.io/node-bacstack](https://fh1ch.github.io/node-bacstack)**.
+The branch name is convenient for evaluation but can move. For repeatable
+builds, replace `bacnet-sc` with a reviewed fork release tag or full commit SHA
+and commit the resulting npm lockfile.
 
-BACnet/SC is available as an experimental transport option beneath the existing
-service API. See [BACNET_SC.md](BACNET_SC.md) for architecture notes, Docker
-test-bench commands, certificate generation, supported PoC services, and known
-limitations.
+To work on the repository itself:
 
-### Features
+```sh
+git clone --branch bacnet-sc https://github.com/antecursor/node-bacstack.git
+cd node-bacstack
+npm ci
+npm run verify
+```
 
-The BACNET standard defines a wide variety of services as part of it's
-specification. While Node BACstack tries to be as complete as possible,
-following services are already supported at this point in time:
+The contributor toolchain uses the npm version declared by `packageManager` in
+`package.json`.
 
-| Service                        | Execute                                                                                | Handle                                                                        |
-|--------------------------------|:--------------------------------------------------------------------------------------:|:-----------------------------------------------------------------------------:|
-| Who Is                         | [yes](https://fh1ch.github.io/node-bacstack/bacstack.html#.whoIs)                      | [yes](https://fh1ch.github.io/node-bacstack/bacstack.html#.event:whoIs)       |
-| I Am                           | yes¹                                                                                   | [yes](https://fh1ch.github.io/node-bacstack/bacstack.html#.event:iAm)         |
-| Who Has                        | yes¹                                                                                   | yes¹                                                                          |
-| I Have                         | yes¹                                                                                   | yes¹                                                                          |
-| Time Sync                      | [yes](https://fh1ch.github.io/node-bacstack/bacstack.html#.timeSync)                   | [yes](https://fh1ch.github.io/node-bacstack/bacstack.html#.event:timeSync)    |
-| UTC Time Sync                  | [yes](https://fh1ch.github.io/node-bacstack/bacstack.html#.timeSyncUTC)                | [yes](https://fh1ch.github.io/node-bacstack/bacstack.html#.event:timeSyncUTC) |
-| Read Property                  | [yes](https://fh1ch.github.io/node-bacstack/bacstack.html#.readProperty)               | yes¹                                                                          |
-| Read Property Multiple         | [yes](https://fh1ch.github.io/node-bacstack/bacstack.html#.readPropertyMultiple)       | yes¹                                                                          |
-| Read Range                     | yes¹                                                                                   | yes¹                                                                          |
-| Write Property                 | [yes](https://fh1ch.github.io/node-bacstack/bacstack.html#.writeProperty)              | yes¹                                                                          |
-| Write Property Multiple        | [yes](https://fh1ch.github.io/node-bacstack/bacstack.html#.writePropertyMultiple)      | yes¹                                                                          |
-| Add List Element               | yes¹                                                                                   | yes¹                                                                          |
-| Remove List Element            | yes¹                                                                                   | yes¹                                                                          |
-| Create Object                  | yes¹                                                                                   | yes¹                                                                          |
-| Delete Object                  | yes¹                                                                                   | yes¹                                                                          |
-| Subscribe COV                  | yes¹                                                                                   | yes¹                                                                          |
-| Subscribe Property             | yes¹                                                                                   | yes¹                                                                          |
-| Atomic Read File               | yes¹                                                                                   | yes¹                                                                          |
-| Atomic Write File              | yes¹                                                                                   | yes¹                                                                          |
-| Reinitialize Device            | [yes](https://fh1ch.github.io/node-bacstack/bacstack.html#.reinitializeDevice)         | yes¹                                                                          |
-| Device Communication Control   | [yes](https://fh1ch.github.io/node-bacstack/bacstack.html#.deviceCommunicationControl) | yes¹                                                                          |
-| Get Alarm Summary              | yes¹                                                                                   | yes¹                                                                          |
-| Get Event Information          | yes¹                                                                                   | yes¹                                                                          |
-| Get Enrollment Summary         | yes¹                                                                                   | yes¹                                                                          |
-| Acknowledge Alarm              | yes¹                                                                                   | yes¹                                                                          |
-| Confirmed Event Notification   | yes¹                                                                                   | yes¹                                                                          |
-| Unconfirmed Event Notification | yes¹                                                                                   | yes¹                                                                          |
-| Unconfirmed Private Transfer   | yes¹                                                                                   | yes¹                                                                          |
-| Confirmed Private Transfer     | yes¹                                                                                   | yes¹                                                                          |
+## Maturity and validation
 
-¹ Support implemented as Beta (untested, undocumented, breaking interface)
+The repository contains a broad historical BACnet/IP service API, but an
+implemented method is not the same as independently validated interoperability.
+The current public-preview focus is deliberately narrower:
 
-### Example
+- BACnet/IP client behavior inherited from the original project.
+- BACnet/SC node-to-hub connections over WebSocket Secure and mutual TLS.
+- Primary/failover hub reconnect and transport diagnostics.
+- Who-Is/I-Am, ReadProperty, ReadPropertyMultiple, WriteProperty, and ReadRange
+  over BACnet/SC.
 
-``` js
-const bacnet = require('bacstack');
+WriteProperty is included for interoperability testing, but all examples are
+read-only unless writing is explicitly enabled and the complete target is
+specified.
 
-// Initialize BACStack
-const client = new bacnet({apduTimeout: 6000});
+| Evidence | What it proves | What it does not prove |
+| --- | --- | --- |
+| Unit tests | Local codec and service behavior for the covered fixtures | Independent wire correctness or device interoperability |
+| Integration tests | Client/service flow through mocked transports and a project-owned TLS BACnet/SC hub | Behavior with an independent product or vendor hub |
+| Java reference fixture | Who-Is/I-Am, ReadProperty, ReadPropertyMultiple, WriteProperty/readback, and ReadRange against a separate Java reference implementation | Vendor interoperability or WSS/mTLS interoperability; this fixture currently uses plain `ws://` inside its test network |
+| Legacy compliance container | A historical Who-Is check against a third-party device-emulator image | A current release gate; it is not part of the default CI workflow |
 
-// Discover Devices
+The local BACnet/SC integration suite does exercise real TLS sockets, a
+mutual-TLS connection, missing client-certificate enforcement, reconnect, and
+failover, but its hub is test code from this repository. No operational vendor
+hub is currently part of the automated release evidence. See
+[BACNET_SC.md](BACNET_SC.md) for the exact matrix and limitations.
+
+## Read-only BACnet/IP example
+
+Run discovery and reads only on a BACnet network you are authorized to test.
+BACnet/IP commonly uses UDP broadcasts, which may cross more devices than a
+single unicast request.
+
+```js
+const Bacnet = require('bacstack');
+
+const client = new Bacnet({apduTimeout: 6000});
+
+client.on('error', (err) => {
+  console.error('BACnet transport error:', err);
+});
+
 client.on('iAm', (device) => {
-  console.log('address: ', device.address);
-  console.log('deviceId: ', device.deviceId);
-  console.log('maxApdu: ', device.maxApdu);
-  console.log('segmentation: ', device.segmentation);
-  console.log('vendorId: ', device.vendorId);
+  console.log('device:', device);
 });
-client.whoIs();
 
-// Read Device Object
-const requestArray = [{
-  objectId: {type: 8, instance: 4194303},
-  properties: [{id: 8}]
+const request = [{
+  objectId: {type: Bacnet.enum.ObjectType.DEVICE, instance: 1234},
+  properties: [{id: Bacnet.enum.PropertyIdentifier.OBJECT_NAME}]
 }];
-client.readPropertyMultiple('192.168.1.43', requestArray, (err, value) => {
-  console.log('value: ', value);
+
+client.readPropertyMultiple('192.0.2.10', request, (err, value) => {
+  if (err) console.error('ReadPropertyMultiple failed:', err);
+  else console.log(value);
+  client.close();
 });
+
+client.whoIs();
 ```
 
-## Contributing
+Replace the documentation-only address and object instance with values from
+your test network. For BACnet/SC setup and the guarded read-only example, see
+[BACNET_SC.md](BACNET_SC.md).
 
-Implementing and maintaining a protocol stack is a lot of work, therefore any
-help is appreciated, from creating issues, to contributing documentation, fixing
-issues and adding new features.
+## Safe-use expectations
 
-Please follow the [Contribution Guide](CONTRIBUTING.md) when submitting any
-changes.
+- Start with discovery and reads on an isolated or otherwise controlled network.
+- Never point examples at a live building without the operator's authorization.
+- Treat WriteProperty, file writes, object changes, device reinitialization, and
+  communication-control services as potentially disruptive.
+- Use a dedicated non-critical test object for writes, select the BACnet command
+  priority deliberately, verify the target address, and arrange rollback first.
+- Use unique operational certificates and protect private keys. The certificates
+  under `test/fixtures` are public throwaway fixtures and must never be reused.
+- Pin this dependency to a reviewed tag or commit, monitor diagnostics, apply
+  timeouts, and always close clients during shutdown.
 
-## License
+## Development commands
 
-[The MIT License](http://opensource.org/licenses/MIT)
+```sh
+npm test                 # unit and mocked/in-process integration tests
+npm run test:coverage    # combined coverage
+npm run lint             # ESLint
+npm run docs             # generate JSDoc under the ignored docs/ directory
+npm run test:sc          # project-owned BACnet/SC TLS/mTLS test hub
+npm run test:sc:java     # Docker-based Java reference fixture
+npm run package:check    # inspect the package file set
+npm run verify           # standard local quality gates
+```
 
-Copyright (c) 2017-2018 Fabio Huser <fabio@fh1.ch>
+See [CONTRIBUTING.md](CONTRIBUTING.md) for test categories and contribution
+expectations, [FAQ.md](FAQ.md) for troubleshooting, and [SECURITY.md](SECURITY.md)
+for private vulnerability reporting.
 
-**Note:** This is not an official product of the BACnet Advocacy Group. BACnet®
-is a registered trademark of American Society of Heating, Refrigerating and
+## License and trademarks
+
+[MIT License](LICENSE.md)
+
+Original copyright (c) 2017-2018 Fabio Huser. Subsequent fork contributions
+remain covered by the repository license.
+
+This is not an official product of ASHRAE or the BACnet Advocacy Group. BACnet®
+is a registered trademark of the American Society of Heating, Refrigerating and
 Air-Conditioning Engineers (ASHRAE).

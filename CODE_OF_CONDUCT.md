@@ -54,12 +54,17 @@ further defined and clarified by project maintainers.
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported by contacting the project team at fabio@fh1.ch. The project team will
-review and investigate all complaints, and will respond in a way that it deems
-appropriate to the circumstances. The project team is obligated to maintain
-confidentiality with regard to the reporter of an incident. Further details of
-specific enforcement policies may be posted separately.
+For conduct that occurs on GitHub, use GitHub's built-in content-reporting and
+report-abuse controls so the report can be handled without publishing sensitive
+details. If the concern is safe to discuss publicly, it may also be raised in an
+issue in the `antecursor/node-bacstack` fork and clearly identified as a conduct
+matter.
+
+This fork does not currently publish a separate private conduct mailbox. Do not
+send conduct reports to the original project's former contact address, and do
+not use the vulnerability-reporting channel for non-security matters. Project
+maintainers will review in-scope reports fairly and protect confidential details
+to the extent the available reporting channel permits.
 
 Project maintainers who do not follow or enforce the Code of Conduct in good
 faith may face temporary or permanent repercussions as determined by other
@@ -68,7 +73,7 @@ members of the project's leadership.
 ## Attribution
 
 This Code of Conduct is adapted from the [Contributor Covenant][homepage],
-version 1.4, available at [http://contributor-covenant.org/version/1/4][version]
+version 1.4, available at [the version 1.4 text][version].
 
-[homepage]: http://contributor-covenant.org
-[version]: http://contributor-covenant.org/version/1/4/
+[homepage]: https://www.contributor-covenant.org/
+[version]: https://www.contributor-covenant.org/version/1/4/code-of-conduct/

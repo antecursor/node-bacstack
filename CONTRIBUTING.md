@@ -1,78 +1,163 @@
 # Contributing
 
-Implementing and maintaining a protocol stack is a lot of work, therefore any
-help is appreciated, from creating issues, to contributing documentation, fixing
-issues and adding new features.
+Thank you for improving the antecursor fork of node-bacstack. Protocol-stack
+changes can affect real building equipment, so correctness claims and safe test
+methods matter as much as code style.
 
-Please follow the best-practice contribution guidelines as mentioned below when
-submitting any changes.
+This fork is currently pre-release and is not represented as production-ready
+or certified. Contributions should make the implemented, tested, and externally
+validated scopes easier to distinguish.
 
-### Conventional Changelog
+## Before opening an issue
 
-This module has a changelog which is automatically generated based on Git commit
-messages. This mechanism requires that all commit messages comply with the
-[Conventional Changelog](https://github.com/bcoe/conventional-changelog-standard/blob/master/convention.md).
-You can check if your commit messages complies with those guidelines by using:
+- Search this fork's GitHub issues and read [FAQ.md](FAQ.md).
+- Do not post suspected vulnerabilities, credentials, certificates, packet
+  captures containing site information, or private topology details in an issue.
+  Follow [SECURITY.md](SECURITY.md) for private reporting.
+- State whether a result came from a mocked transport, the project-owned
+  BACnet/SC test hub, the Java reference fixture, an emulator, or a named vendor
+  product. These are different levels of evidence.
+- Redact building addresses, device names, network ranges, certificate subjects,
+  and other customer/site identifiers before attaching diagnostics.
 
-``` sh
-npm run changelog
+## Development setup
+
+Node.js 22.13.0 or newer is required. Use npm and the npm version declared by
+the `packageManager` field in `package.json`.
+
+```sh
+git clone --branch bacnet-sc https://github.com/antecursor/node-bacstack.git
+cd node-bacstack
+npm ci
+npm run verify
 ```
 
-### Code Style
+`npm ci` intentionally treats `package-lock.json` as authoritative. Do not add a
+second package-manager lockfile.
 
-This module uses the [Google JavaScript Code-Style](https://google.github.io/styleguide/javascriptguide.xml)
-and enforces it using [JSCS](http://jscs.info/) as additional linter beneath
-[JSHint](http://jshint.com/). You can test if your changes comply with the code
-style by executing:
+## Commit history
 
-``` sh
+Keep changes small enough to understand and bisect even when they are developed
+on one long-lived branch. Separate mechanical formatting, behavioral fixes,
+tests, and public API changes when practical.
+
+Use [Conventional Commits](https://www.conventionalcommits.org/) with an
+imperative summary, for example:
+
+```text
+fix(sc): expire queued requests before reconnect
+test(asn1): add truncated date vectors
+docs: document fork validation levels
+```
+
+Use `!` and a `BREAKING CHANGE:` footer for intentional compatibility breaks.
+Before finalizing an organized commit series, run:
+
+```sh
+npm run lint:commits
+```
+
+## Code and documentation style
+
+The project uses ESLint with the repository configuration:
+
+```sh
 npm run lint
 ```
 
-### Testing and Coverage
+Add or update JSDoc when public options, events, callbacks, return values, or
+errors change. Generate it locally with:
 
-Testing is done using [Mocha](https://mochajs.org/) and is separated into two
-sets, `unit` and `integration`. While unit tries to test on function level,
-including synthetic decoding and encoding, the integration tests are using real
-recorded data and are only mocking the transport layer.
-
-For both sets, the test-coverage is calculated using [Istanbul](https://istanbul.js.org/).
-Running the tests and calculating the coverage can be done locally by executing:
-
-``` sh
-npm run test
-npm run integration
-```
-
-It is expected that new features or fixes do not negatively impact the test
-results or the coverage.
-
-### Compliance Testing
-
-Besides the `unit` and `integration` test-sets, which are ensuring functionality
-using synthetical data, the  `compliance` test-set is using a well established
-3rd BACNET device emulator to test against. It uses the same test setup with
-[Mocha](https://mochajs.org/) and [Istanbul](https://istanbul.js.org/), but runs
-inside a Docker container, while using the [BACStack Compliance Docker](https://github.com/fh1ch/bacstack-compliance-docker)
-image to test against.
-
-The compliance tests can be executed locally and require Docker and
-Docker-Compose. To do so, simply run:
-
-``` sh
-docker-compose build
-docker-compose up --abort-on-container-exit --exit-code-from bacnet-client
-```
-
-### Documentation
-
-The API documentation is generated using [JSDoc](http://usejsdoc.org/) and
-relies on in-line JSDoc3 syntax. The documentation can also be built locally by
-executing:
-
-``` sh
+```sh
 npm run docs
 ```
 
-It is expected that new features or changes are reflected in the documentation
-as well.
+Generated JSDoc is written to the ignored `docs/` directory. Do not commit the
+generated output.
+
+## Test categories
+
+Run the smallest relevant command while iterating, then the complete verification
+command before handing off a change:
+
+```sh
+npm run test:unit
+npm run test:integration
+npm test
+npm run test:coverage
+npm run verify
+```
+
+The evidence levels are intentionally named precisely:
+
+- **Unit tests** cover codecs and helpers with repository-owned fixtures. A
+  local encoder/decoder round trip alone can preserve the same defect on both
+  sides, so protocol fixes should include independent expected bytes where
+  possible.
+- **Integration tests** exercise the public client through mocked transports or
+  in-process peers. They prove internal flow, not hardware interoperability.
+- **`npm run test:sc`** uses real TLS sockets and a project-owned mock BACnet/SC
+  hub. It covers WSS/mTLS behavior, service routing, reconnect, and failover,
+  but remains same-project evidence.
+- **`npm run test:sc:java`** uses Docker and a separate Java reference stack. It
+  currently verifies Who-Is/I-Am, ReadProperty, ReadPropertyMultiple,
+  WriteProperty/readback, and ReadRange over plain WebSocket inside the test
+  network. It does not prove vendor WSS/mTLS interoperability.
+- **`npm run compliance`** is the test command used by the legacy Docker
+  compliance setup. That container path is not part of the current default CI
+  release gate and should not be cited as current production evidence.
+
+Every bug fix should include a regression test that fails for the original
+reason. Network decoders should also receive boundary, truncation, malformed
+length, and resource-limit cases. Mutating service tests must use disposable
+fixtures rather than live operational points.
+
+## BACnet/SC fixture
+
+The fast suite is:
+
+```sh
+npm run test:sc
+```
+
+The independent-codebase Java fixture requires Docker Compose and may require
+network access to obtain the reference implementation:
+
+```sh
+npm run test:sc:java
+```
+
+Generate disposable certificates for manual testing with:
+
+```sh
+./scripts/generate-sc-certs.sh
+```
+
+Never commit operational certificates, private keys, passphrases, site
+configuration, or captures. The checked-in keys under `test/fixtures/sc-certs`
+are intentionally public and only safe for disposable automated tests.
+
+## Pull-request checklist
+
+Even if a branch is maintained by one person, the checklist is useful as a
+release record:
+
+- Explain the user-visible behavior and risk.
+- Identify compatibility changes and migration steps.
+- Add regression and negative-path tests.
+- State each test command actually run and whether it used mocks, Java, an
+  emulator, or vendor equipment.
+- Update README/JSDoc/security guidance when public behavior changes.
+- Run `npm run verify` and inspect `npm run package:check` for unintended files.
+- Confirm examples remain read-only unless an explicit, fully specified write
+  opt-in is present.
+- Before a public release/announcement, confirm this fork's GitHub **Report a
+  vulnerability** button is enabled and opens a private advisory form.
+
+## Reporting conduct concerns
+
+This repository follows [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). For behavior
+that occurs on GitHub, use GitHub's built-in content/report-abuse controls. If a
+matter is safe to discuss publicly, open an issue in this fork and label it as a
+conduct concern. Do not misuse private vulnerability reporting for conduct
+matters.
