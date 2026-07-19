@@ -14,8 +14,8 @@
     "json-summary"
   ],
   "reports-dir": "reports/coverage",
-  "branches": 60,
-  "functions": 90,
-  "lines": 85,
-  "statements": 85
+  "branches": 78,
+  "functions": 93,
+  "lines": 90,
+  "statements": 90
 }

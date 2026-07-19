@@ -17,6 +17,39 @@ function numberSetting(name, fallback) {
   return value;
 }
 
+function booleanSetting(name, fallback) {
+  const raw = process.env[name];
+  if (raw == null) return fallback;
+  if (raw !== 'true' && raw !== 'false') {
+    throw new Error(name + ' must be exactly "true" or "false"');
+  }
+  return raw === 'true';
+}
+
+function plainWebSocketSetting(hubUrl) {
+  let url;
+  try {
+    url = new URL(hubUrl);
+  } catch (err) {
+    throw new Error(
+      'BACNET_SC_HUB_URL must be a valid ws:// or wss:// URL: ' + err.message,
+      {cause: err}
+    );
+  }
+  if (url.protocol !== 'ws:' && url.protocol !== 'wss:') {
+    throw new Error('BACNET_SC_HUB_URL must use ws:// or wss://');
+  }
+
+  const allowPlain = booleanSetting('BACNET_SC_ALLOW_PLAIN', false);
+  if (url.protocol === 'ws:' && !allowPlain) {
+    throw new Error('A ws:// BACNET_SC_HUB_URL requires BACNET_SC_ALLOW_PLAIN=true');
+  }
+  if (url.protocol !== 'ws:' && allowPlain) {
+    throw new Error('BACNET_SC_ALLOW_PLAIN=true is only valid with a ws:// fixture URL');
+  }
+  return allowPlain;
+}
+
 function requiredSetting(name) {
   const value = process.env[name];
   if (value == null || value === '') throw new Error('Write mode requires ' + name);
@@ -159,6 +192,7 @@ async function main() {
   const connectTimeout = numberSetting('BACNET_SC_CONNECT_TIMEOUT', 15000);
   const webSocketTimeout = numberSetting('BACNET_SC_WEBSOCKET_TIMEOUT', 60000);
   const hubUrl = process.env.BACNET_SC_HUB_URL || 'wss://localhost:4443';
+  const allowPlain = plainWebSocketSetting(hubUrl);
 
   if (write) {
     validateInteger('BACNET_SC_DEVICE_INSTANCE', deviceInstance, 0, 4194303);
@@ -170,6 +204,7 @@ async function main() {
   const client = new bacnet({
     transport: 'bacnet-sc',
     hubUrl: hubUrl,
+    allowPlain: allowPlain,
     vmac: process.env.BACNET_SC_VMAC || '020000000101',
     uuid: process.env.BACNET_SC_UUID || '02000000-0101-4222-8333-020000000101',
     cert: certPath('node-bacstack.pem', 'client.pem'),

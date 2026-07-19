@@ -1,9 +1,9 @@
 services:
   sc-certs:
-    image: alpine:3.20
+    image: alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
     working_dir: /workspace
     volumes:
-      - .:/workspace
+      - .:/workspace:ro
       - sc-certs:/certs
     command:
       - /bin/sh
@@ -21,21 +21,26 @@ services:
       BACNET_SC_REF_COMMIT: d40c80b8afa108a8806e997c99c6e9c94741b5bb
       BACNET_SC_REF_TARGET_DIR: /opt/bacnet-sc-reference/d40c80b8afa108a8806e997c99c6e9c94741b5bb
     ports:
-      - "4443:4443"
-      - "4444:4444"
-      - "4445:4445"
+      - "127.0.0.1:4443:4443"
+      - "127.0.0.1:4444:4444"
+      - "127.0.0.1:4445:4445"
     volumes:
       - sc-reference:/opt/bacnet-sc-reference
       - sc-certs:/certs:ro
       - ./docker/bacnet-sc/reference-stack:/reference-stack:ro
     healthcheck:
-      test: ["CMD-SHELL", "test -f /opt/bacnet-sc-reference/d40c80b8afa108a8806e997c99c6e9c94741b5bb/Application && test -f /certs/hub.pem"]
+      test:
+        - CMD-SHELL
+        - >-
+          test -f /opt/bacnet-sc-reference/d40c80b8afa108a8806e997c99c6e9c94741b5bb/Application &&
+          test -f /certs/hub.pem &&
+          bash -c 'exec 3<>/dev/tcp/127.0.0.1/4443'
       interval: 10s
       timeout: 5s
       retries: 12
 
   node-bacstack-sc-runner:
-    image: node:22.13.0-bookworm
+    image: node:22.13.0-bookworm@sha256:fa54405993eaa6bab6b6e460f5f3e945a2e2f07942ba31c0e297a7d9c2041f62
     profiles:
       - test
     working_dir: /workspace
@@ -43,13 +48,10 @@ services:
       bacnet-sc-reference:
         condition: service_healthy
     environment:
-      BACNET_SC_HUB_URL: wss://bacnet-sc-reference:4443
-      BACNET_SC_NODE_BACSTACK_PEM: /certs/node-bacstack.pem
-      BACNET_SC_NODE_BACSTACK_KEY: /certs/node-bacstack.key
-      BACNET_SC_CA_PEM: /certs/ca.pem
+      BACNET_SC_HUB_URL: ws://bacnet-sc-reference:4443
+      BACNET_SC_ALLOW_PLAIN: "true"
     volumes:
       - .:/workspace
-      - sc-certs:/certs:ro
     command: ["npm", "run", "example:sc"]
 
 volumes:

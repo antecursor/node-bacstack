@@ -5,3 +5,7 @@ docs/
 .DS_Store
 docker/bacnet-sc/certs/
 docker/bacnet-sc/reference-stack/
+.env
+.env.*
+!.env.example
+*.tgz

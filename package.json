@@ -1,11 +1,13 @@
 {
   "name": "bacstack",
-  "version": "0.0.1-beta.20",
-  "description": "A BACnet protocol stack written in pure JavaScript.",
+  "version": "0.1.0-rc.1",
+  "private": true,
+  "description": "An independent node-bacstack fork with BACnet/IP and experimental BACnet Secure Connect client support.",
   "main": "index.js",
   "files": [
     "index.js",
     "lib/",
+    "ARCHITECTURE.md",
     "BACNET_SC.md",
     "CHANGELOG.md",
     "CODE_OF_CONDUCT.md",
@@ -13,6 +15,7 @@
     "FAQ.md",
     "LICENSE.md",
     "README.md",
+    "RELEASE.md",
     "SECURITY.md"
   ],
   "scripts": {
@@ -24,6 +27,7 @@
     "test:unit": "mocha \"test/unit/**/*.spec.js\"",
     "test:integration": "mocha \"test/integration/**/*.spec.js\"",
     "test:coverage": "c8 npm test",
+    "test:state-churn": "node scripts/soak-client-state.js",
     "integration": "npm run test:integration",
     "test:sc": "mocha test/integration/bacnet-sc.spec.js",
     "test:sc:java": "./scripts/run-sc-java-fixture.sh",
@@ -32,9 +36,13 @@
     "compose:sc:down": "docker compose -f docker-compose.bacnet-sc.yml down -v",
     "example:sc": "node examples/bacnet-sc.js",
     "compliance": "mocha \"test/compliance/**/*.spec.js\"",
+    "predocs": "node -e \"require('node:fs').rmSync('docs', {recursive: true, force: true})\"",
     "docs": "jsdoc --configure jsdoc.json",
+    "postdocs": "node scripts/copy-doc-static.js",
+    "docs:check": "node scripts/check-doc-links.js",
     "package:check": "npm pack --dry-run --json",
-    "verify": "npm run lint && npm run test:coverage && npm run docs && npm run package:check"
+    "package:smoke": "node scripts/package-smoke-test.js",
+    "verify": "npm run lint && npm run test:coverage && npm run test:state-churn && npm run docs && npm run docs:check && npm run package:check && npm run package:smoke"
   },
   "repository": {
     "type": "git",
@@ -42,9 +50,11 @@
   },
   "keywords": [
     "bacnet",
+    "bacnet-sc",
     "bacstack",
     "building",
-    "automation"
+    "automation",
+    "secure-connect"
   ],
   "author": {
     "name": "Fabio Huser",
@@ -65,8 +75,8 @@
   },
   "homepage": "https://github.com/antecursor/node-bacstack#readme",
   "dependencies": {
-    "debug": "^4.0.1",
-    "iconv-lite": "^0.4.24",
+    "debug": "^4.4.3",
+    "iconv-lite": "^0.7.3",
     "ws": "^8.21.1"
   },
   "overrides": {

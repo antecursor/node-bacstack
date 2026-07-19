@@ -1,6 +1,7 @@
+# Historical compatibility fixture only. It is not a current release gate.
 services:
   bacnet-device:
-    image: fh1ch/bacstack-compliance-docker
+    image: fh1ch/bacstack-compliance-docker@sha256:ca637e15e40ab05649205e674ee51aff318651d9070ce08779856f4cc871c18b
   bacnet-client:
     build:
       context: .

@@ -386,7 +386,10 @@ public class JavaFixture extends Application {
                 response.writeObjectIdentitfier(0, objectIdentifier);
                 response.writeEnumerated(1, propertyIdentifier);
                 if (arrayIndex != -1) response.writeUnsigned(2, arrayIndex);
-                response.writeBitString(3, new byte[]{0, 0});
+                // BACnet ReadRange ResultFlags contains exactly three bits.
+                // The BACnet4J helper accepts the encoded unused-bits octet
+                // followed by the value octets, so five bits are unused here.
+                response.writeBitString(3, new byte[]{5, 0});
                 response.writeUnsigned(4, values.length);
                 response.writeOpenTag(5);
                 for (float value : values) response.writeReal(value);

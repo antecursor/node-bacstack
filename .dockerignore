@@ -3,3 +3,10 @@ npm-debug.log
 reports/
 docs/
 .git/
+docker/bacnet-sc/certs/
+docker/bacnet-sc/reference-stack/
+test/fixtures/sc-certs/
+.env
+.env.*
+!.env.example
+*.tgz
