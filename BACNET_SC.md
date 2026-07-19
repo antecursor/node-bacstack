@@ -7,8 +7,9 @@ the default.
 > [!WARNING]
 > This is a pre-release node-to-hub implementation. Its protocol and resource
 > handling have automated adversarial coverage, but it has not been independently
-> security-audited, certified, soak-tested, or validated against an operational
-> vendor hub. Do not describe it as a certified BACnet/SC implementation.
+> security-audited, certified, subjected to long-duration operational soak
+> testing, or validated against an operational vendor hub. Do not describe it
+> as a certified BACnet/SC implementation.
 
 ## Connection example
 
@@ -58,6 +59,17 @@ Accepted configuration includes:
 - `sendQueueLimit`, `sendQueueTimeout`, `maxHandshakeBytes`, and
   `maxBufferedAmount`/`maxBufferedBytes` for resource bounds.
 
+The shared client layer also bounds confirmed transactions and partial
+segmented messages. Its `maxTransactions`, `maxTransactionPeers`,
+`serverTransactionTimeout`, `maxServerTransactions`,
+`maxServerTransactionsPerPeer`, `maxServerTransactionBytes`,
+`maxSegmentedTransfers`, `maxSegmentedTransfersPerPeer`,
+`maxSegmentedRequestTransfers`, `maxSegmentsPerTransfer`,
+`maxSegmentedBytesPerTransfer`, `maxSegmentedTotalBytes`,
+`maxSegmentedRequestBytes`, `segmentIdleTimeout`, and
+`segmentAbsoluteTimeout` options are documented in
+[README.md](README.md#resource-bounds-and-segmentation).
+
 `requireClientCertificate` defaults to `true`. A WSS connection also requires
 an explicitly configured site `ca` store. The peer certificate must pass TLS
 validation and be signed directly by one of those CA certificates. In keeping
@@ -66,12 +78,14 @@ Name matching are not performed by default. Enable that additional policy with
 `verifyServerIdentity: true`, an explicit `servername`, or a custom
 `checkServerIdentity` function when the installation requires it.
 
-`allowSystemTrust: true` replaces the BACnet/SC site-CA/direct-signer rule with
-the Node.js system trust store. `rejectUnauthorized: false` disables peer
-certificate verification entirely. Both are explicit, nonconformant escape
-hatches and should be confined to controlled compatibility work or disposable
-tests. Plain `ws://` is rejected unless `allowPlain: true` is explicitly set;
-it exists for isolated test fixtures and sends BACnet traffic without TLS.
+`allowSystemTrust: true` replaces the BACnet/SC direct-site-CA signer rule with
+standard Node.js TLS validation. It uses the default roots only when no custom
+`ca` is supplied; as usual in Node.js, a custom `ca` replaces those roots.
+`rejectUnauthorized: false` disables peer certificate verification entirely.
+Those settings, `requireClientCertificate: false`, `allowInsecureTls: true`, and
+`allowPlain: true` are explicit nonconformant compatibility/test escape hatches
+and should be confined to controlled work or disposable fixtures. Plain
+`ws://` sends BACnet traffic without TLS.
 
 Retryable connection failures are emitted as `diagnostic` and `reconnect`
 events by default so reconnect attempts do not create an unhandled `error`
@@ -86,6 +100,28 @@ and whether the shutdown was locally requested. Returned status objects are
 snapshots; changing one does not alter live transport limits or peer state.
 Do not expose that snapshot outside a trusted operations boundary without
 reviewing it for site information.
+
+BACnet/SC service addresses use 12-character lowercase hexadecimal VMACs. A
+direct peer is passed as a string such as `020000000101`; a routed peer is
+passed as `{vmac: '020000000101', net: 2001, adr: [0x01, 0x23]}`. Decoded
+service events include this canonical value as `sourceAddress`.
+
+Inbound confirmed-service events use the same generation-bound `event.reply`
+capability as BACnet/IP. The capability is tied to the exact VMAC or routed
+identity and caches its first terminal frame before WebSocket delivery, so an
+exact retry does not rerun application work during the configured retention
+window. Register one listener per confirmed service; see
+[README.md](README.md#serving-inbound-confirmed-requests) for the handler and
+resource contract.
+
+Confirmed-service callbacks accept `(err, value, linkContext)`. For BACnet/SC,
+`linkContext` exposes a detached snapshot of the BVLL message ID,
+originating/destination VMACs, and Data Options. Its containers are frozen and
+option payload Buffers are copied from transport input, although Buffer contents
+remain mutable JavaScript values. Segmented messages add their segment count and
+complete message-ID list. The same metadata is available as `event.linkContext`
+on decoded service events. Treat it as diagnostic and correlation information,
+not as authorization data.
 
 ## Safe example
 
@@ -109,6 +145,11 @@ Present_Value; the default trend object is Trend Log instance `1`. Prefer
 setting these explicitly for any shared test environment. Certificate settings
 are `BACNET_SC_NODE_BACSTACK_PEM`, `BACNET_SC_NODE_BACSTACK_KEY`, and
 `BACNET_SC_CA_PEM`.
+
+`BACNET_SC_ALLOW_PLAIN` defaults to `false` and accepts only the exact strings
+`true` or `false`. Set it to `true` only with a `ws://` URL for the disposable
+Java fixture described below. The example rejects both a plain URL without that
+opt-in and an unnecessary plain-transport opt-in paired with `wss://`.
 
 Writing requires every guard below. The example refuses to write when any value
 is absent, when the discovered VMAC does not match the configured target, or
@@ -191,13 +232,23 @@ For interactive work, start and stop the reference bench with:
 
 ```sh
 npm run compose:sc:up
+BACNET_SC_HUB_URL=ws://127.0.0.1:4443 \
+BACNET_SC_ALLOW_PLAIN=true \
+npm run example:sc
 npm run compose:sc:down
 ```
 
-Generated Compose certificates are stored under `docker/bacnet-sc/certs` and
-ignored by git. Certificates and private keys under `test/fixtures/sc-certs`
-are intentionally public throwaway fixtures for automated tests. Never install
-or trust them outside a disposable test environment.
+The Java fixture deliberately uses unencrypted `ws://` and is reachable from
+the host only through ports bound to `127.0.0.1`; never expose those ports or
+reuse this opt-in for an operational connection. Compose stores generated
+certificates in its managed `sc-certs` named volume rather than the working
+tree. `npm run compose:sc:down` removes that volume. Running
+`./scripts/generate-sc-certs.sh` directly instead writes its disposable output
+under the ignored `docker/bacnet-sc/certs` directory by default.
+
+Certificates and private keys under `test/fixtures/sc-certs` are intentionally
+public throwaway fixtures for automated tests. Never install or trust them
+outside a disposable test environment.
 
 ## Implemented BACnet/SC scope
 
@@ -214,22 +265,27 @@ or trust them outside a disposable test environment.
   proprietary messages.
 - Standards-tested WebSocket framing through the maintained `ws` package.
 - Bounded pending-send queue, WebSocket handshake, frame, and outbound buffers.
+- Bounded, cancellable confirmed transactions correlated by complete peer
+  identity, invoke ID, service, and expected PDU.
+- Bounded reassembly of inbound segmented Confirmed-Request and Complex-ACK
+  messages.
 - Application-facing status, diagnostic, reconnect, open, close, and error events.
 
 ## Known limitations
 
 - Hub, node-switch, router, and Direct Connect roles are not implemented.
 - Address resolution reports that Direct Connect is unsupported, and
-  advertisements report that direct connections are not accepted. Data Options
-  are preserved in low-level transport message metadata, but the legacy client
-  API does not yet expose them on decoded service events.
+  advertisements report that direct connections are not accepted.
 - VMACs are represented as 12-character lowercase hexadecimal strings in events
   and service address arguments.
-- The transport and application parser have not completed hostile-input fuzzing
-  or long-running resource/reconnect soak testing.
-- Queued requests, transaction cancellation, invoke-ID concurrency, segmentation,
-  routed-address handling, and malformed-packet behavior require further
-  production hardening across the shared client stack.
+- The transport and application parser have deterministic hostile-input and
+  malformed-window tests, but have not completed long-running
+  coverage-guided fuzzing or resource/reconnect soak testing.
+- Shared-client transaction, segmentation, and routed-address paths have
+  automated coverage but still need operational routed-device and vendor-hub
+  interoperability evidence.
+- Outbound APDU fragmentation is not implemented; requests and application
+  responses must fit the active transport and negotiated payload limits.
 - No Niagara/JACE or other operational vendor WSS/mTLS result is currently part
   of the repository evidence.
 

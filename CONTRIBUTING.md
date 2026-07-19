@@ -26,8 +26,9 @@ Node.js 22.13.0 or newer is required. Use npm and the npm version declared by
 the `packageManager` field in `package.json`.
 
 ```sh
-git clone --branch bacnet-sc https://github.com/antecursor/node-bacstack.git
+git clone https://github.com/antecursor/node-bacstack.git
 cd node-bacstack
+git checkout <reviewed-tag-or-full-commit-sha>
 npm ci
 npm run verify
 ```
@@ -85,6 +86,7 @@ npm run test:unit
 npm run test:integration
 npm test
 npm run test:coverage
+npm run test:state-churn
 npm run verify
 ```
 

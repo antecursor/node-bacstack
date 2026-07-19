@@ -1,3 +1,184 @@
+# 0.1.0-rc.1 (2026-07-18)
+
+This is the first independently versioned release candidate of the
+`antecursor/node-bacstack` fork. The package deliberately retains the historical
+`bacstack` runtime import for compatibility, but its manifest is private and the
+fork is distributed only by an immutable Git tag or full commit SHA. The
+separately published `bacstack` npm package remains the upstream project. This
+candidate is a public preview, not a production-readiness, security-audit,
+certification, BTL-listing, or vendor-interoperability claim.
+
+### Added
+
+- An initiating BACnet/SC node-to-hub transport with WSS/mTLS, Connect and
+  Accept, Encapsulated NPDU delivery, heartbeat and disconnect handshakes,
+  reconnect, primary/failover hub selection, primary probing, bounded send
+  queues, and operational diagnostics.
+- Public `transport.BacnetSc` and `bacnetSc` codec exports.
+- Per-peer confirmed-service transactions with per-request timeouts,
+  `AbortSignal` cancellation, invoke-ID quarantine, and configurable resource
+  limits.
+- Generation-bound `event.reply` capabilities for inbound confirmed requests,
+  with bounded request fingerprinting, terminal-response replay, pending
+  deadlines, and global/per-peer/cache-byte limits.
+- Bounded inbound segmented-request and segmented-Complex-ACK reassembly with
+  SegmentACK/NAK handling, idle and absolute deadlines, and aggregate memory
+  limits.
+- Canonical, UDP-port-aware direct and routed BACnet/IP and BACnet/SC address
+  models, plus optional `sourceAddress` and `linkContext` metadata for events
+  and callbacks.
+- A pinned independent Java BACnet/SC fixture for Who-Is/I-Am, ReadProperty,
+  ReadPropertyMultiple, guarded WriteProperty/readback, and ReadRange, alongside
+  the project-owned WSS/mTLS integration fixture.
+- Deterministic decoder hostile-input, service truncation, malformed-ingress,
+  client-state churn, package-tarball smoke, documentation-link, and release
+  checks.
+- Fork-specific architecture, BACnet/SC, security, FAQ, contribution, and
+  release-evidence documentation, plus current CI, coverage, CodeQL, and
+  dependency-update workflows.
+
+### Changed
+
+- The supported contributor/runtime baseline is Node.js 22.13.0 or newer with
+  npm 11.18.0; the project now uses a current lockfile, ESLint, Mocha, c8, and
+  GitHub Actions toolchain in place of the retired JSHint, JSCS, Travis, and
+  Yarn-era setup.
+- Confirmed responses are correlated by complete peer identity, invoke ID,
+  service choice, and expected PDU rather than by a process-wide invoke ID.
+- Inbound confirmed requests are deduplicated before service decoding and have
+  exactly one reply owner. Exact retries replay the first cached terminal frame
+  without rerunning application work; malformed, unsupported, unhandled,
+  ambiguous, expired, and failed-handler paths now receive deterministic
+  terminal responses.
+- The built-in classic BACnet/IP transport validates its UDP configuration and
+  IPv4-only interface, broadcast, destination addresses, and per-send
+  destination ports synchronously. Custom IP transports can advertise their
+  address family explicitly.
+- BACnet/IP strings imply the configured `destinationPort`; explicit
+  `{ip, port}` and `{ip, port, net, adr}` peers preserve non-default UDP ports
+  for routing and transaction identity. Direct BACnet/SC VMACs are normalized
+  to lowercase 12-character hexadecimal strings.
+- BACnet/SC defaults to TLS 1.3, a client certificate, an explicit site CA, and
+  a directly signed peer certificate. System trust, hostname checking, wider
+  TLS policy, disabled verification, missing client certificates, and plain
+  WebSockets require explicit configuration as described in `BACNET_SC.md`.
+- The disposable Java fixture binds host ports only on loopback. Its example
+  path requires the exact `BACNET_SC_ALLOW_PLAIN=true` opt-in with a `ws://`
+  URL, and Compose keeps generated fixture certificates in a named volume.
+- Parsers consume explicit buffer bounds and reject malformed trailing content
+  instead of reading beyond the enclosing protocol field.
+- Public ComplexACK callbacks now accept only decoders that consume the complete
+  service payload. ReadProperty and the property-specific ASN.1 values for COV
+  subscriptions, object-property references, calendar entries, weekly
+  schedules, and event timestamps use the same bounded parsing model.
+- BACnet EventTransitionBits and ReadRange ResultFlags are encoded as exactly
+  three bits, while EventNotification BACnetStatusFlags are encoded as exactly
+  four bits. Invalid widths fail before any response bytes are written.
+- CharacterString handling is strict for UTF-8, Latin-1, network-byte-order
+  UCS-2/UCS-4, and JIS X 0208 row/cell octets. Shift-JIS, unknown encodings,
+  and installation-specific Microsoft DBCS values are rejected instead of
+  being guessed.
+- PrivateTransfer payloads decode to owned `Buffer` values instead of mutable
+  numeric arrays.
+- BACnet/SC Data Options expose the standard `everySegment` semantic for data
+  options and `mustUnderstand` for destination options while accepting the
+  legacy input alias where documented.
+
+### Fixed
+
+- Malformed or truncated BVLC, NPDU, APDU, ASN.1, service, and BACnet/SC input
+  is rejected without unbounded loops, out-of-range reads, or oversized state
+  growth; forwarded NPDUs retain their original source metadata.
+- BACnet/SC message sizing, control flags, UUID/VMAC fields, Data Options,
+  payload limits, queue expiry, close behavior, heartbeat state, stale socket
+  generations, reconnect/failover transitions, and timer/listener cleanup are
+  validated consistently.
+- GetEnrollmentSummary optional filters and zero values, empty
+  GetEventInformation requests, optional LifeSafetyOperation targets, optional
+  PrivateTransfer data, AtomicReadFile record acknowledgements, and several
+  strict service-tag/window cases now encode and decode their wire forms
+  correctly.
+- GetAlarmSummary now uses the standard context tags `[0]`, `[1]`, and `[2]`,
+  validates complete alarm records, and accepts the valid empty result.
+  GetEventInformation and ConfirmedPrivateTransfer callbacks now decode their
+  actual acknowledgements instead of using the wrong schema or discarding the
+  response.
+- CreateObject supports both legal object-specifier choices, omits an empty
+  optional initial-values list, and returns the object identifier assigned by
+  its ComplexACK.
+- Extended ASN.1 length headers preserve their tag number; constructed tags
+  require context class and matching closes; invalid dates and times are
+  rejected instead of being normalized. Unknown context values retain owned
+  payload bytes and their tag number.
+- Wrong-peer, wrong-service, stale, rejected, errored, and aborted packets no
+  longer settle an unrelated confirmed request, and BACnet errors, rejects, and
+  aborts retain structured protocol details.
+- Segmented transfer windowing, sequence-number wrap, retransmission handling,
+  duplicate-completion suppression, and resource-account release are bounded
+  and deterministic. Request completion churn cannot evict every retained
+  segmented-response replay descriptor.
+- Every outbound client frame is finalized through one size/length check.
+  Oversized local output fails with `ERR_OUTBOUND_APDU_TOO_LARGE`, while an
+  oversized tracked ComplexACK is cached as an APDU-too-long Abort.
+- Confirmed-service dispatch requires the decoder to consume the exact payload;
+  fixed-size terminal APDUs reject trailing bytes, and delayed timer callbacks
+  cannot allow a response after its absolute deadline.
+- All supported unconfirmed-service decoders now require exact payload
+  consumption. Unconfirmed EventNotification and PrivateTransfer select BACnet/IP
+  broadcast framing when sent to a broadcast target instead of labeling that
+  traffic as an original unicast NPDU.
+- EventNotification now decodes its complete event-values choice within the
+  declared APDU window. Unconfirmed EventNotification and PrivateTransfer
+  events expose the decoded payload instead of an undefined wrapper field.
+- CreateObject optional values, priority, nonzero array indexes, and displaced
+  decode windows are handled consistently.
+
+### Migration
+
+- Use Node.js 22.13.0 or newer and the npm version declared by `packageManager`.
+- Install this fork only from a reviewed immutable tag or full commit SHA, for
+  example `github:antecursor/node-bacstack#<reviewed-tag-or-full-commit-sha>`.
+  Do not use bare `npm install bacstack` or a moving branch when you intend to
+  consume this fork.
+- Confirmed-service callbacks may receive a third `linkContext` argument, and
+  decoded service events may include `sourceAddress` and `linkContext`.
+  Existing callback arguments and the legacy event `address` field remain
+  available.
+- `acknowledgeAlarm` accepts `options.acknowledgingProcessIdentifier`; the
+  historical value `57` remains the default. Successful CreateObject,
+  GetEventInformation, and ConfirmedPrivateTransfer callbacks now include their
+  decoded acknowledgement values.
+- A BACnet/IP string still uses `destinationPort`; use `{ip, port}` or
+  `{ip, port, net, adr}` when the exact peer uses another UDP port. Represent
+  BACnet/SC routed peers as `{vmac, net, adr}`. The built-in BACnet/IP transport
+  rejects IPv6 literals; a custom transport must opt into other address
+  families through its address-capability hooks and must honor
+  `context.destinationPort`.
+- Reply to inbound confirmed requests through the request's `event.reply`
+  capability. Legacy address/invoke-ID response helpers are disabled unless
+  `allowUntrackedServerResponses: true` is explicitly selected; they do not
+  provide generation ownership or duplicate-safe response caching.
+- PrivateTransfer consumers that require an array should use
+  `Array.from(result.data)`. Encoders continue to accept `Buffer`,
+  `Uint8Array`, or validated numeric arrays.
+- CharacterString encoding IDs without a deterministic supported mapping now
+  fail instead of silently decoding as another character set. In particular,
+  data previously labeled JIS X 0208 while carrying Shift-JIS bytes is rejected;
+  use JIS X 0208 two-octet row/cell values or UTF-8.
+- A request timeout covers an unsegmented response or arrival of the first
+  response segment. Segment-specific deadlines then govern reassembly, while
+  an abort signal remains active for the whole operation. Requests are not
+  retried automatically; after a mutating request times out, the remote state
+  may be unknown.
+- Strict decoders now discard malformed, truncated, or trailing input that
+  older releases may have tolerated. Applications should treat such packets as
+  invalid rather than depending on partial decoding.
+- Encoders now reject non-standard widths for EventTransitionBits,
+  BACnetStatusFlags, and ReadRange ResultFlags. Pass one value octet with
+  `bitsUsed` set to `3`, `4`, and `3`, respectively.
+- Outbound APDU fragmentation is still not implemented; size requests and
+  responses to fit the negotiated transport/APDU limits.
+
 <a name="0.0.1-beta.13"></a>
 # [0.0.1-beta.13](https://github.com/fh1ch/node-bacstack/compare/v0.0.1-beta.12...v0.0.1-beta.13) (2017-12-24)
 
@@ -228,5 +409,3 @@
 ### Bug Fixes
 
 * fix various syntax issues ([3259856](https://github.com/fh1ch/node-bacstack/commit/325985624e95caaa622efad486ac456554dacd96))
-
-

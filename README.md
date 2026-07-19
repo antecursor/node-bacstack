@@ -17,24 +17,25 @@ tooling.
 
 Node.js 22.13.0 or newer is required.
 
-This fork does not currently document a fork-owned npm package name. The bare
-command `npm install bacstack` resolves the separately published upstream
-package, not necessarily the code in this repository. Install the fork directly
-from GitHub instead:
+This fork does not currently publish a fork-owned npm package name, and its
+manifest is marked `private` to prevent an accidental publication under the
+upstream `bacstack` identity. The bare command `npm install bacstack` resolves
+the separately published upstream package, not this repository. Install the
+fork from an immutable Git commit or published fork tag instead:
 
 ```sh
-npm install github:antecursor/node-bacstack#bacnet-sc
+npm install github:antecursor/node-bacstack#<reviewed-tag-or-full-commit-sha>
 ```
 
-The branch name is convenient for evaluation but can move. For repeatable
-builds, replace `bacnet-sc` with a reviewed fork release tag or full commit SHA
-and commit the resulting npm lockfile.
+Do not substitute a moving branch name in a repeatable build. Record the exact
+tag or full SHA you reviewed and commit the resulting npm lockfile.
 
 To work on the repository itself:
 
 ```sh
-git clone --branch bacnet-sc https://github.com/antecursor/node-bacstack.git
+git clone https://github.com/antecursor/node-bacstack.git
 cd node-bacstack
+git checkout <reviewed-tag-or-full-commit-sha>
 npm ci
 npm run verify
 ```
@@ -108,6 +109,208 @@ Replace the documentation-only address and object instance with values from
 your test network. For BACnet/SC setup and the guarded read-only example, see
 [BACNET_SC.md](BACNET_SC.md).
 
+## Client addresses and request lifecycle
+
+The built-in BACnet/IP transport interprets string addresses as IP addresses;
+the BACnet/SC transport interprets them as six-byte VMACs. A custom transport
+should implement `getAddressKind()` or set `addressKind: 'ip'` or
+`addressKind: 'vmac'` on the client so string addresses are unambiguous. Direct
+VMACs are normalized to 12 lowercase hexadecimal characters. A BACnet/IP
+string implies the client's `destinationPort` (47808 by default). Use an
+explicit `{ip, port}` object for a peer on another UDP port; the port is part of
+the peer's transaction identity.
+
+The built-in classic BACnet/IP transport uses an IPv4 UDP socket and BVLC type
+`0x81`. Its `interface` and `broadcastAddress` options, plus direct and routed
+destinations, must therefore be IPv4 literals. An IPv6 destination fails
+synchronously with `ERR_UNSUPPORTED_ADDRESS_FAMILY`. Generic client address
+normalization remains IPv6-capable for custom adapters: an IP adapter can opt
+in by implementing `supportsAddress(linkAddress)` (recommended for dual-stack
+adapters) or by returning `6` from `getIpVersion()`. Without either capability,
+custom IP transports retain IPv4 compatibility but do not accept IPv6 peers.
+The capability is only an address-routing contract; the custom adapter remains
+responsible for any BACnet/IPv6 link framing or translation.
+
+Routed destinations retain both the link peer and BACnet network/MAC identity:
+
+```js
+const routedIpDevice = {
+  ip: '192.0.2.10', // BACnet/IP link peer or router
+  port: 47809,      // optional; defaults to the client's destinationPort
+  net: 2001,
+  adr: [0x01, 0x23]
+};
+
+const routedScDevice = {
+  vmac: '020000000101', // BACnet/SC link peer
+  net: 2001,
+  adr: [0x01, 0x23]
+};
+```
+
+`port` must be in the range 1–65535, `net` must be in the range 1–65534, and
+`adr` must contain 1–255 octets. The complete address participates in
+confirmed-response correlation, so different UDP ports and devices behind the
+same router do not share transaction identity. The compatibility option
+`allowRoutedResponseFallback: true` permits a link-only response to match only
+when that match is unambiguous; leave it disabled unless a known peer omits its
+routed source address.
+
+Every decoded service event includes a `sourceAddress` in one of the direct or
+routed shapes above. Existing `address` fields retain their historical,
+service-specific shape. A default-port direct BACnet/IP peer remains a string;
+a non-default-port peer is `{ip, port}`. When transport metadata exists, the
+event also includes `linkContext`.
+
+Confirmed service methods accept two request-lifecycle options in their normal
+`options` object:
+
+- `timeout`: a positive whole number of milliseconds that overrides the
+  client's `apduTimeout` while waiting for an unsegmented response or the first
+  matching response segment. After the first segment, `segmentIdleTimeout` and
+  the fixed `segmentAbsoluteTimeout` govern reassembly instead.
+- `signal`: an `AbortSignal`. Aborting it completes the callback once with the
+  signal's reason when available, releases the transaction, and prevents a late
+  response from being attributed to another request. The signal remains active
+  during segmented-response reassembly.
+
+`acknowledgeAlarm` also accepts `acknowledgingProcessIdentifier` in its options.
+It must be an integer from 0 through 4294967295 and should identify the
+acknowledging application process. The historical value `57` remains the
+default when this option is omitted.
+
+`subscribeProperty` currently retains the historical public-helper behavior: a
+non-cancellation request encodes lifetime `0` (indefinite) and does not include
+a COV increment. Its options object controls only the shared confirmed-request
+lifecycle fields above. Finite lifetimes and COV deadbands are a known API
+limitation of this helper and are not silently inferred from extra options.
+
+Their callback shape is `(err, value, linkContext)`. BACnet/IP normally has no
+link metadata, so the third argument may be `undefined`. Forwarded BACnet/IP
+traffic identifies its forwarding peer and original source. BACnet/SC metadata
+is a detached snapshot containing `transport`, `messageId`, `originating`,
+`destination`, and decoded `dataOptions`. Its containers are frozen and option
+payload Buffers are copied from transport input, but Buffer contents remain
+mutable JavaScript values. A reassembled segmented message also sets
+`segmented`, `segmentCount`, and `messageIds`.
+
+```js
+const controller = new AbortController();
+
+client.readProperty(
+  '192.0.2.10',
+  {type: Bacnet.enum.ObjectType.DEVICE, instance: 1234},
+  Bacnet.enum.PropertyIdentifier.OBJECT_NAME,
+  {timeout: 5000, signal: controller.signal},
+  (err, value, linkContext) => {
+    if (err) console.error(err);
+    else console.log(value, linkContext);
+  }
+);
+
+// controller.abort(new Error('application shutdown'));
+```
+
+`client.close()` also completes all active confirmed callbacks with
+`ERR_CLIENT_CLOSED`, clears partial segmented messages, and then closes the
+transport.
+
+### Serving inbound confirmed requests
+
+An inbound confirmed-service event carries a frozen, request-specific
+`event.reply` capability. Use that capability instead of copying an address and
+invoke ID into a later response. It is bound to the exact peer, UDP port,
+service, invoke ID, and request generation; only its first terminal response is
+accepted.
+
+```js
+client.on('readProperty', async (event) => {
+  const {objectId, property} = event.request;
+
+  // Perform application authorization and lookup before responding.
+  const value = await readAuthorizedValue(objectId, property);
+  event.reply.readProperty(objectId, property, [
+    {type: Bacnet.enum.ApplicationTags.REAL, value}
+  ]);
+});
+```
+
+The capability exposes `simpleAck()`, `complexAck(payload)`,
+`error(errorClass, errorCode)`, `reject(reason)`, `abort(reason)`, and typed
+`readProperty(...)` and `readPropertyMultiple(...)` helpers. A Complex-ACK
+payload may be a `Buffer`/`Uint8Array` or a function that writes into an
+isolated `{buffer, offset}` encoder object. SimpleACK and ComplexACK helpers
+reject service-incompatible response types.
+
+Register exactly one listener for each confirmed-service event. No listener
+produces a cached Unrecognized-Service Reject; an ambiguous listener set
+produces a cached server Abort. A synchronous handler exception is aborted and
+then rethrown. A rejected async handler is converted to a cached Abort and
+surfaced through a `confirmed-handler-rejection` diagnostic (and `error` when
+an error listener is present). If a handler never replies, the request deadline
+produces an Application-Exceeded-Reply-Time Abort.
+
+The first encoded terminal response is cached before transport delivery and is
+replayed byte-for-byte for an exact duplicate request, even when the first send
+was rejected or threw. This suppresses duplicate application work only within
+`serverTransactionTimeout` and the current process; applications must still
+make mutating operations idempotent across restarts and later retries. Legacy
+address/invoke-ID response helpers are blocked by default. The
+`allowUntrackedServerResponses: true` compatibility option re-enables them, but
+loses generation binding and duplicate-safe reply ownership and should not be
+used for new code.
+
+### Resource bounds and segmentation
+
+The client applies finite defaults to transaction and inbound segmentation
+state. Tune them downward for small installations before raising them for a
+measured workload:
+
+| Constructor option | Default | Scope |
+| --- | ---: | --- |
+| `maxTransactions` | 1024 | Active confirmed requests across all peers |
+| `maxTransactionPeers` | 1024 | Tracked peer invoke-ID states |
+| `serverTransactionTimeout` | 30000 ms | Pending inbound reply deadline and completed-response replay retention |
+| `maxServerTransactions` | 1024 | Pending and completed inbound confirmed requests |
+| `maxServerTransactionsPerPeer` | 64 | Inbound confirmed requests per exact peer |
+| `maxServerTransactionBytes` | 4 MiB | Reserved fingerprints and cached terminal frames |
+| `maxSegmentedTransfers` | 32 | Partial inbound requests and responses |
+| `maxSegmentedTransfersPerPeer` | 8 | Partial transfers per peer and direction |
+| `maxSegmentedRequestTransfers` | 31 | Partial inbound requests; defaults to one fewer than the global transfer limit |
+| `maxSegmentsPerTransfer` | 1024 | Segments accepted for one message |
+| `maxSegmentedBytesPerTransfer` | 1 MiB | Reassembled bytes for one message |
+| `maxSegmentedTotalBytes` | 4 MiB | Reassembled bytes across all partial messages |
+| `maxSegmentedRequestBytes` | 3 MiB | Bytes held by inbound requests; defaults to the global byte limit minus one transfer allowance |
+| `segmentIdleTimeout` | `apduTimeout` | Maximum pause between accepted segments |
+| `segmentAbsoluteTimeout` | 30000 ms | Maximum lifetime of a partial message |
+
+The request-direction limits may be zero and cannot exceed their corresponding
+global limits; the other resource counts and all segment timeouts must be
+positive whole numbers. Their defaults reserve enough global capacity for at
+least one maximum-sized segmented response, so a flood of inbound requests
+cannot consume every response slot and byte. The bounded completion cache also
+reserves one response replay descriptor by default so completed request churn
+cannot remove every final response SegmentACK replay opportunity.
+
+Confirmed operations that expect a Complex-ACK advertise segmented-response
+support unless their request option `maxSegments` is
+`MaxSegmentsAccepted.SEGMENTS_0`. The client reassembles inbound segmented
+Complex-ACK responses and inbound segmented Confirmed-Request messages, sends
+SegmentACK/negative SegmentACK responses, and aborts a transfer that violates
+its ordering, invariant, time, or resource limits. A failed segmented response
+completes its callback with `BACNET_SEGMENTATION_ERROR`.
+
+Outbound APDU fragmentation is not implemented. An outbound confirmed request
+or application response must therefore fit the active transport and negotiated
+payload limits even though the client can receive segmented messages. An
+oversized local send fails before transport delivery with
+`ERR_OUTBOUND_APDU_TOO_LARGE`; an oversized tracked ComplexACK becomes a cached
+`APDU_TOO_LONG` Abort. The client also does not automatically retransmit a
+confirmed request when its timeout expires. If an application adds retries, it
+must account for the fact that a timed-out non-idempotent operation (for
+example, a write, file operation, or device-control request) may already have
+taken effect at the peer.
+
 ## Safe-use expectations
 
 - Start with discovery and reads on an isolated or otherwise controlled network.
@@ -131,10 +334,14 @@ npm run docs             # generate JSDoc under the ignored docs/ directory
 npm run test:sc          # project-owned BACnet/SC TLS/mTLS test hub
 npm run test:sc:java     # Docker-based Java reference fixture
 npm run package:check    # inspect the package file set
+npm run package:smoke    # pack, install, and load the real tarball
+npm run test:state-churn # bounded synthetic transaction/segment churn
 npm run verify           # standard local quality gates
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for test categories and contribution
+See [ARCHITECTURE.md](ARCHITECTURE.md) for runtime boundaries,
+[RELEASE.md](RELEASE.md) for the evidence required before a release claim,
+[CONTRIBUTING.md](CONTRIBUTING.md) for test categories and contribution
 expectations, [FAQ.md](FAQ.md) for troubleshooting, and [SECURITY.md](SECURITY.md)
 for private vulnerability reporting.
 
