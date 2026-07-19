@@ -73,6 +73,24 @@ describe('bacstack - BACnet/SC message layer', () => {
     expect(() => sc.encode(sc.FUNCTIONS.ENCAPSULATED_NPDU, {
       dataOptions: [{type: 1, mustUnderstand: false}]
     })).to.throw('BACNET_SC_INVALID_SECURE_PATH_OPTION');
+    const current = sc.decode(sc.encode(sc.FUNCTIONS.ENCAPSULATED_NPDU, {
+      dataOptions: [{type: 1, everySegment: true}],
+      payload: Buffer.from([1])
+    }));
+    expect(current.dataOptions).to.deep.equal([{
+      marker: 0x41,
+      type: 1,
+      everySegment: true
+    }]);
+    const legacy = sc.decode(sc.encode(sc.FUNCTIONS.ENCAPSULATED_NPDU, {
+      dataOptions: [{type: 1, mustUnderstand: true}],
+      payload: Buffer.from([1])
+    }));
+    expect(legacy.dataOptions).to.deep.equal(current.dataOptions);
+    expect(() => sc.encode(sc.FUNCTIONS.ENCAPSULATED_NPDU, {
+      dataOptions: [{type: 2, everySegment: true, mustUnderstand: false}],
+      payload: Buffer.from([1])
+    })).to.throw('BACNET_SC_INVALID_OPTION');
     expect(() => sc.encode(sc.FUNCTIONS.PROPRIETARY_MESSAGE, {
       destOptions: [{type: 31, data: Buffer.from([1, 2])}]
     })).to.throw('BACNET_SC_INVALID_PROPRIETARY_OPTION');

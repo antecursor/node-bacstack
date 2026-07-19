@@ -1,15 +1,4 @@
 {
-  "lib/asn1.js": {
-    "no-constant-binary-expression": {
-      "count": 3
-    },
-    "no-unused-vars": {
-      "count": 9
-    },
-    "no-useless-assignment": {
-      "count": 1
-    }
-  },
   "lib/client.js": {
     "@stylistic/indent": {
       "count": 11
@@ -19,26 +8,6 @@
     },
     "no-unused-vars": {
       "count": 13
-    }
-  },
-  "lib/services/atomic-read-file.js": {
-    "no-useless-assignment": {
-      "count": 5
-    }
-  },
-  "lib/services/atomic-write-file.js": {
-    "no-useless-assignment": {
-      "count": 2
-    }
-  },
-  "lib/services/get-enrollment-summary.js": {
-    "no-unused-vars": {
-      "count": 2
-    }
-  },
-  "lib/services/read-range.js": {
-    "no-case-declarations": {
-      "count": 2
     }
   },
   "test/integration/time-sync-utc.spec.js": {
@@ -64,11 +33,6 @@
   "test/integration/who-is.spec.js": {
     "no-unused-vars": {
       "count": 6
-    }
-  },
-  "test/unit/service-write-property-multiple.spec.js": {
-    "no-unused-vars": {
-      "count": 2
     }
   }
 }

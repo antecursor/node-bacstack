@@ -25,4 +25,16 @@ describe('bacstack - Services layer LifeSafetyOperation unit', () => {
     expect(() => baServices.lifeSafetyOperation.decode(truncated, 0, truncated.length)).not.to.throw();
     expect(baServices.lifeSafetyOperation.decode(truncated, 0, truncated.length)).to.equal(undefined);
   });
+
+  it('encodes and decodes the optional all-objects form without a target', () => {
+    const buffer = utils.getBuffer();
+    baServices.lifeSafetyOperation.encode(buffer, 8, 'User01', 7);
+    const result = baServices.lifeSafetyOperation.decode(buffer.buffer, 0, buffer.offset);
+    expect(result).to.deep.equal({
+      len: buffer.offset,
+      processId: 8,
+      requestingSource: 'User01',
+      operation: 7
+    });
+  });
 });

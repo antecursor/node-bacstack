@@ -20,7 +20,7 @@ describe('bacstack - confirmedEventNotification integration', () => {
       notifyType: 1,
       changeOfValueTag: 0,
       changeOfValueChangeValue: 90,
-      changeOfValueStatusFlags: {bitsUsed: 24, value: [0xaa, 0xaa, 0xaa]}
+      changeOfValueStatusFlags: {bitsUsed: 4, value: [0x0a]}
     }, (err, value) => {
       expect(err.message).to.eql('ERR_TIMEOUT');
       expect(value).to.eql(undefined);

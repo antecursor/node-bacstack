@@ -360,7 +360,7 @@ function sendReadRangeResponse(client, receiver, invokeId, objectId) {
   const rangeBuffer = Buffer.from([0x21, 0x01, 0x21, 0x02]);
   baNpdu.encode(buffer, baEnum.NpduControlPriority.NORMAL_MESSAGE, receiver);
   baApdu.encodeComplexAck(buffer, baEnum.PduTypes.COMPLEX_ACK, baEnum.ConfirmedServiceChoice.READ_RANGE, invokeId);
-  baServices.readRange.encodeAcknowledge(buffer, objectId, baEnum.PropertyIdentifier.LOG_BUFFER, baEnum.ASN1_ARRAY_ALL, {bitsUsed: 8, value: [0]}, 2, rangeBuffer, baEnum.ReadRangeType.BY_POSITION, 1);
+  baServices.readRange.encodeAcknowledge(buffer, objectId, baEnum.PropertyIdentifier.LOG_BUFFER, baEnum.ASN1_ARRAY_ALL, {bitsUsed: 3, value: [0]}, 2, rangeBuffer, baEnum.ReadRangeType.BY_POSITION, 1);
   baBvlc.encode(buffer.buffer, baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU, buffer.offset);
   client._transport.send(buffer.buffer, buffer.offset, receiver);
 }

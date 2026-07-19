@@ -2,6 +2,7 @@
 
 const expect      = require('chai').expect;
 const utils       = require('./utils');
+const baAsn1      = require('../../lib/asn1');
 const baServices  = require('../../lib/services');
 const baEnum      = require('../../lib/enum');
 
@@ -278,28 +279,13 @@ describe('ReadPropertyAcknowledge', () => {
     });
   });
 
-  it('should successfully encode and decode a character-string value with Codepage850 encoding', () => {
+  it('should reject the installation-specific Microsoft DBCS character-string encoding', () => {
     const buffer = utils.getBuffer();
-    baServices.readProperty.encodeAcknowledge(buffer, {type: 8, instance: 40000}, 81, 0xFFFFFFFF, [
-      {type: 7, value: '', encoding: baEnum.CharacterStringEncoding.MICROSOFT_DBCS},
-      {type: 7, value: 'Test1234$äöü', encoding: baEnum.CharacterStringEncoding.MICROSOFT_DBCS}
+    const encode = () => baServices.readProperty.encodeAcknowledge(buffer, {type: 8, instance: 40000}, 81, 0xFFFFFFFF, [
+      {type: 7, value: 'Test1234', encoding: baEnum.CharacterStringEncoding.MICROSOFT_DBCS}
     ]);
-    const result = baServices.readProperty.decodeAcknowledge(buffer.buffer, 0, buffer.offset);
-    delete result.len;
-    expect(result).to.deep.equal({
-      objectId: {
-        type: 8,
-        instance: 40000
-      },
-      property: {
-        index: 0xFFFFFFFF,
-        id: 81
-      },
-      values: [
-        {type: 7, value: '', encoding: baEnum.CharacterStringEncoding.MICROSOFT_DBCS},
-        {type: 7, value: 'Test1234$äöü', encoding: baEnum.CharacterStringEncoding.MICROSOFT_DBCS}
-      ]
-    });
+
+    expect(encode).to.throw().with.property('code', 'ERR_UNSUPPORTED_CHARACTER_STRING_ENCODING');
   });
 
   it('should successfully encode and decode a character-string value with JISX-0208 encoding', () => {
@@ -527,5 +513,92 @@ describe('ReadPropertyAcknowledge', () => {
         ]}}
       ]
     });
+  });
+
+  it('honors every declared prefix from a nonzero offset', () => {
+    const buffer = utils.getBuffer();
+    baServices.readProperty.encodeAcknowledge(
+      buffer,
+      {type: baEnum.ObjectType.DEVICE, instance: 40000},
+      baEnum.PropertyIdentifier.PRESENT_VALUE,
+      baEnum.ASN1_ARRAY_ALL,
+      [{type: baEnum.ApplicationTags.REAL, value: 42.5}]
+    );
+    const payload = Buffer.from(buffer.buffer.subarray(0, buffer.offset));
+    const input = Buffer.concat([Buffer.from([0xAA]), payload, Buffer.alloc(8, 0x55)]);
+
+    for (let length = 0; length < payload.length; length++) {
+      expect(() => baServices.readProperty.decodeAcknowledge(input, 1, length),
+        `prefix ${length}`).not.to.throw();
+      expect(baServices.readProperty.decodeAcknowledge(input, 1, length),
+        `prefix ${length}`).to.equal(undefined);
+    }
+
+    const result = baServices.readProperty.decodeAcknowledge(input, 1, payload.length);
+    expect(result).to.deep.include({
+      len: payload.length,
+      objectId: {type: baEnum.ObjectType.DEVICE, instance: 40000},
+      property: {
+        id: baEnum.PropertyIdentifier.PRESENT_VALUE,
+        index: baEnum.ASN1_ARRAY_ALL
+      }
+    });
+  });
+
+  it('rejects trailing data and application-class service fields', () => {
+    const buffer = utils.getBuffer();
+    baServices.readProperty.encodeAcknowledge(
+      buffer,
+      {type: baEnum.ObjectType.DEVICE, instance: 40000},
+      baEnum.PropertyIdentifier.PRESENT_VALUE,
+      baEnum.ASN1_ARRAY_ALL,
+      [{type: baEnum.ApplicationTags.UNSIGNED_INTEGER, value: 42}]
+    );
+    const payload = Buffer.from(buffer.buffer.subarray(0, buffer.offset));
+    const trailing = Buffer.concat([payload, Buffer.from([0x00])]);
+    expect(baServices.readProperty.decodeAcknowledge(trailing, 0, trailing.length))
+      .to.equal(undefined);
+
+    [
+      {name: 'object identifier', offset: 0},
+      {name: 'property identifier', offset: 5},
+      {name: 'property-value opening tag', offset: 7},
+      {name: 'property-value closing tag', offset: payload.length - 1}
+    ].forEach((testCase) => {
+      const wrongClass = Buffer.from(payload);
+      wrongClass[testCase.offset] &= ~0x08;
+      expect(() => baServices.readProperty.decodeAcknowledge(
+        wrongClass,
+        0,
+        wrongClass.length
+      ), testCase.name).not.to.throw();
+      expect(baServices.readProperty.decodeAcknowledge(wrongClass, 0, wrongClass.length),
+        testCase.name).to.equal(undefined);
+    });
+  });
+
+  it('returns owned Buffers for opaque property values', () => {
+    const buffer = utils.getBuffer();
+    baAsn1.encodeContextObjectId(
+      buffer,
+      0,
+      baEnum.ObjectType.DEVICE,
+      40000
+    );
+    baAsn1.encodeContextEnumerated(buffer, 1, baEnum.PropertyIdentifier.PRESENT_VALUE);
+    baAsn1.encodeOpeningTag(buffer, 3);
+    buffer.buffer[buffer.offset++] = 0xD9;
+    buffer.buffer[buffer.offset++] = 0x42;
+    baAsn1.encodeClosingTag(buffer, 3);
+    const payload = Buffer.from(buffer.buffer.subarray(0, buffer.offset));
+
+    const result = baServices.readProperty.decodeAcknowledge(payload, 0, payload.length);
+    const decoded = result.values[0].value.value;
+    expect(decoded).to.deep.equal(Buffer.from([0x42]));
+
+    payload[payload.length - 2] = 0x24;
+    expect(decoded).to.deep.equal(Buffer.from([0x42]));
+    decoded[0] = 0x18;
+    expect(payload[payload.length - 2]).to.equal(0x24);
   });
 });

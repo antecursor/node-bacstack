@@ -90,4 +90,23 @@ describe('bacstack - Services layer AlarmAcknowledge unit', () => {
       expect(baServices.alarmAcknowledge.decode(truncated, 0, truncated.length)).to.equal(undefined);
     }
   });
+
+  it('should consume an unsupported Ack Source character set', () => {
+    // ASHRAE 135-2016bu requires this field to be consumed without failing
+    // the service, even when the receiver cannot interpret its characters.
+    const payload = Buffer.from(
+      '09011c0080000329043e19013f4c0103a4415e19015f',
+      'hex'
+    );
+    const result = baServices.alarmAcknowledge.decode(payload, 0, payload.length);
+    expect(result).to.deep.equal({
+      acknowledgedProcessId: 1,
+      eventObjectId: {type: 2, instance: 3},
+      eventStateAcknowledged: 4,
+      eventTimeStamp: 1,
+      acknowledgeSource: '',
+      acknowledgeTimeStamp: 1,
+      len: payload.length
+    });
+  });
 });

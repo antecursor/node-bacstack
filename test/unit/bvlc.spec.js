@@ -25,19 +25,50 @@ describe('bacstack - BVLC layer', () => {
   });
 
   it('should successfuly encode and decode a forwarded package', () => {
-    const buffer = utils.getBuffer();
-    baBvlc.encode(buffer.buffer, 4, 1482);
-    const result = baBvlc.decode(buffer.buffer, 0);
+    const packet = Buffer.from([
+      0x81, 0x04, 0x00, 0x0C,
+      0xC0, 0x00, 0x02, 0x2A, 0xBA, 0xC0,
+      0x01, 0x00
+    ]);
+    const result = baBvlc.decode(packet, 0);
     expect(result).to.deep.equal({
       len: 10,
       func: 4,
-      msgLength: 1482
+      msgLength: 12,
+      originatingAddress: {
+        ip: '192.0.2.42',
+        port: 47808
+      }
+    });
+  });
+
+  it('should decode a forwarded origin relative to the requested offset', () => {
+    const packet = Buffer.from([
+      0xFF, 0xFF,
+      0x81, 0x04, 0x00, 0x0B,
+      0xCB, 0x00, 0x71, 0x07, 0x12, 0x34,
+      0x01
+    ]);
+    const result = baBvlc.decode(packet, 2);
+    expect(result).to.deep.equal({
+      len: 10,
+      func: 4,
+      msgLength: 11,
+      originatingAddress: {
+        ip: '203.0.113.7',
+        port: 0x1234
+      }
     });
   });
 
   it('should reject a forwarded package shorter than its function header', () => {
-    const packet = Buffer.from([0x81, 0x04, 0x00, 0x04]);
-    expect(baBvlc.decode(packet, 0)).to.equal(undefined);
+    for (let length = 4; length < 10; length++) {
+      const packet = Buffer.alloc(length);
+      packet[0] = 0x81;
+      packet[1] = 0x04;
+      packet.writeUInt16BE(length, 2);
+      expect(baBvlc.decode(packet, 0)).to.equal(undefined);
+    }
   });
 
   it('should fail if invalid BVLC type', () => {

@@ -1236,7 +1236,7 @@ describe('bacstack - BACnet/SC transport', () => {
       dataOptions: [{
         marker: 0x42,
         type: 2,
-        mustUnderstand: true
+        everySegment: true
       }]
     });
     expect(active.socket.sent).to.have.length(0);

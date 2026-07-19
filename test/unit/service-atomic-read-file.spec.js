@@ -48,10 +48,47 @@ describe('AtomicReadFileAcknowledge', () => {
 
   it('should successfully encode and decode as non-stream', () => {
     const buffer = utils.getBuffer();
-    baServices.atomicReadFile.encodeAcknowledge(buffer, false, false, 0, 90, [12, 12, 12], 3);
-    // TODO: AtomicReadFileAcknowledge as non-stream not yet implemented
-    expect(() => {
-      baServices.atomicReadFile.decodeAcknowledge(buffer.buffer, 0);
-    }).to.throw('NotImplemented');
+    baServices.atomicReadFile.encodeAcknowledge(
+      buffer,
+      false,
+      false,
+      12,
+      2,
+      [[1], [2, 3]],
+      [1, 2]
+    );
+    const result = baServices.atomicReadFile.decodeAcknowledge(buffer.buffer, 0, buffer.offset);
+    delete result.len;
+    expect(result).to.deep.equal({
+      isStream: false,
+      position: 12,
+      endOfFile: false,
+      blockCount: 2,
+      blocks: [Buffer.from([1]), Buffer.from([2, 3])]
+    });
+  });
+
+  it('returns owned stream data that does not alias the input', () => {
+    const writer = utils.getBuffer();
+    baServices.atomicReadFile.encodeAcknowledge(writer, true, false, 0, 1, [[1, 2, 3]], [3]);
+    const input = Buffer.from(writer.buffer.subarray(0, writer.offset));
+    const result = baServices.atomicReadFile.decodeAcknowledge(input, 0, input.length);
+
+    input.fill(0);
+    expect(result.buffer).to.deep.equal(Buffer.from([1, 2, 3]));
+    result.buffer[0] = 0xFF;
+    expect(input.includes(0xFF)).to.equal(false);
+  });
+
+  it('returns owned record data that does not alias the input', () => {
+    const writer = utils.getBuffer();
+    baServices.atomicReadFile.encodeAcknowledge(writer, false, false, 0, 2, [[1], [2, 3]], [1, 2]);
+    const input = Buffer.from(writer.buffer.subarray(0, writer.offset));
+    const result = baServices.atomicReadFile.decodeAcknowledge(input, 0, input.length);
+
+    input.fill(0);
+    expect(result.blocks).to.deep.equal([Buffer.from([1]), Buffer.from([2, 3])]);
+    result.blocks[1][0] = 0xFF;
+    expect(input.includes(0xFF)).to.equal(false);
   });
 });

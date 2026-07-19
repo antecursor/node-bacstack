@@ -5,6 +5,18 @@ const utils       = require('./utils');
 const baServices  = require('../../lib/services');
 
 describe('bacstack - Services layer CreateObject unit', () => {
+  it('encodes and decodes the object-type choice without empty initial values', () => {
+    const buffer = utils.getBuffer();
+    baServices.createObject.encode(buffer, {type: 0}, []);
+
+    expect(Buffer.from(buffer.buffer.subarray(0, buffer.offset)).toString('hex')).to.equal('0e09000f');
+    expect(baServices.createObject.decode(buffer.buffer, 0, buffer.offset)).to.deep.equal({
+      len: buffer.offset,
+      objectId: {type: 0},
+      values: []
+    });
+  });
+
   it('should successfully encode and decode', () => {
     const buffer = utils.getBuffer();
     const date = new Date(1, 1, 1);
@@ -78,7 +90,7 @@ describe('bacstack - Services layer CreateObject unit', () => {
         },
         {
           property: {
-            index: 0xFFFFFFFF,
+            index: 0,
             id: 82
           },
           value: [
@@ -100,5 +112,35 @@ describe('bacstack - Services layer CreateObject unit', () => {
     const decode = () => baServices.createObject.decode(truncated, 0, truncated.length);
     expect(decode).not.to.throw();
     expect(decode()).to.equal(undefined);
+  });
+
+  it('encodes and exactly decodes the assigned object identifier acknowledgement', () => {
+    const buffer = utils.getBuffer();
+    baServices.createObject.encodeAcknowledge(buffer, {type: 2, instance: 47});
+    const encoded = Buffer.from(buffer.buffer.subarray(0, buffer.offset));
+
+    expect(baServices.createObject.decodeAcknowledge(encoded, 0, encoded.length)).to.deep.equal({
+      len: encoded.length,
+      objectId: {type: 2, instance: 47}
+    });
+    for (let length = 0; length < encoded.length; length++) {
+      expect(baServices.createObject.decodeAcknowledge(encoded, 0, length)).to.equal(undefined);
+    }
+    const wrapped = Buffer.concat([Buffer.from([0xAA]), encoded, Buffer.from([0xBB])]);
+    expect(baServices.createObject.decodeAcknowledge(wrapped, 1, encoded.length)).to.include({
+      len: encoded.length
+    });
+    expect(baServices.createObject.decodeAcknowledge(wrapped, 1, encoded.length + 1)).to.equal(undefined);
+  });
+
+  it('rejects malformed object specifiers and acknowledgement tag classes', () => {
+    expect(baServices.createObject.decode(Buffer.from('0e09000e', 'hex'), 0, 4)).to.equal(undefined);
+    expect(baServices.createObject.decode(Buffer.from('0e0d000000000f', 'hex'), 0, 7)).to.equal(undefined);
+
+    const buffer = utils.getBuffer();
+    baServices.createObject.encodeAcknowledge(buffer, {type: 2, instance: 47});
+    const wrongClass = Buffer.from(buffer.buffer.subarray(0, buffer.offset));
+    wrongClass[0] |= 0x08;
+    expect(baServices.createObject.decodeAcknowledge(wrongClass, 0, wrongClass.length)).to.equal(undefined);
   });
 });

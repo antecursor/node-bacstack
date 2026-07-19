@@ -22,7 +22,7 @@ describe('bacstack - unconfirmedEventNotification integration', () => {
       fromState: 5,
       toState: 6,
       changeOfBitstringReferencedBitString: {bitsUsed: 24, value: [0xaa, 0xaa, 0xaa]},
-      changeOfBitstringStatusFlags: {bitsUsed: 24, value: [0xaa, 0xaa, 0xaa]}
+      changeOfBitstringStatusFlags: {bitsUsed: 4, value: [0x0a]}
     });
     client.close();
   });
