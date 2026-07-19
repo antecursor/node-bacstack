@@ -1,6 +1,5 @@
 'use strict';
 
-const expect      = require('chai').expect;
 const utils       = require('./utils');
 
 describe('bacstack - unconfirmedPrivateTransfer integration', () => {

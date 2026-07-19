@@ -13,12 +13,31 @@ describe('bacstack - Client address normalization', () => {
     const fromString = normalizeAddress(' 10.20.30.40 ');
     const fromObject = normalizeAddress({ip: '10.20.30.40'});
 
-    expect(fromString).to.deep.include({kind: 'ip', ip: '10.20.30.40', linkIp: '10.20.30.40'});
+    expect(fromString).to.deep.include({
+      kind: 'ip',
+      ip: '10.20.30.40',
+      port: 47808,
+      linkIp: '10.20.30.40',
+      linkPort: 47808
+    });
     expect(Object.isFrozen(fromString)).to.equal(true);
     expect(normalizeAddress(fromString)).to.equal(fromString);
     expect(addressKey(fromString)).to.equal(addressKey(fromObject));
     expect(getLinkIp(fromString)).to.equal('10.20.30.40');
     expect(linkKey(fromString)).to.equal(linkKey(fromObject));
+  });
+
+  it('includes direct and routed UDP ports in exact and link identities', () => {
+    const defaulted = normalizeAddress('10.20.30.41', 'ip', 47809);
+    const direct = normalizeAddress({ip: '10.20.30.41', port: 47810});
+    const firstRoute = {ip: '10.20.30.1', port: 47809, net: 303, adr: [5]};
+    const secondRoute = {ip: '10.20.30.1', port: 47810, net: 303, adr: [5]};
+
+    expect(defaulted.port).to.equal(47809);
+    expect(addressKey(defaulted)).not.to.equal(addressKey(direct));
+    expect(linkKey(defaulted)).not.to.equal(linkKey(direct));
+    expect(addressKey(firstRoute)).not.to.equal(addressKey(secondRoute));
+    expect(linkKey(firstRoute)).not.to.equal(linkKey(secondRoute));
   });
 
   it('preserves and freezes complete routed identities', () => {
@@ -88,11 +107,18 @@ describe('bacstack - Client address normalization', () => {
       {ip: '10.0.0.1', net: 1},
       {ip: '10.0.0.1', adr: [1]},
       {ip: '10.0.0.1', net: 0x10000, adr: [1]},
+      {ip: '10.0.0.1', net: 0, adr: [1]},
+      {ip: '10.0.0.1', net: 0xFFFF, adr: [1]},
       {ip: '10.0.0.1', net: 1, adr: [256]},
       {ip: '10.0.0.1', net: 1, adr: []},
+      {ip: '10.0.0.1', port: 0},
+      {ip: '10.0.0.1', port: 65536},
+      {ip: '10.0.0.1', port: 47808.5},
       {ip: '10.0.0.1', vmac: '02000000abcd'},
+      {vmac: '02000000abcd', port: 47808},
       {vmac: 'not-a-vmac'},
       {vmac: [1, 2, 3]},
+      {vmac: '02000000abcd', net: 0xFFFF, adr: [1]},
       {vmac: '02000000abcd', net: 1, adr: []}
     ];
 

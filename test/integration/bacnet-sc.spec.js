@@ -8,10 +8,7 @@ const tls = require('tls');
 
 const expect = require('chai').expect;
 const bacnet = require('../../');
-const baApdu = require('../../lib/apdu');
-const baBvlc = require('../../lib/bvlc');
 const baEnum = require('../../lib/enum');
-const baNpdu = require('../../lib/npdu');
 const baServices = require('../../lib/services');
 const sc = require('../../lib/bacnet-sc/message');
 
@@ -352,17 +349,19 @@ function readRange(client, address) {
   });
 }
 
-function sendReadRangeResponse(client, receiver, invokeId, objectId) {
-  const buffer = {
-    buffer: Buffer.alloc(client._transport.getMaxPayload()),
-    offset: baEnum.BVLC_HEADER_LENGTH
-  };
+function sendReadRangeResponse(reply, objectId) {
   const rangeBuffer = Buffer.from([0x21, 0x01, 0x21, 0x02]);
-  baNpdu.encode(buffer, baEnum.NpduControlPriority.NORMAL_MESSAGE, receiver);
-  baApdu.encodeComplexAck(buffer, baEnum.PduTypes.COMPLEX_ACK, baEnum.ConfirmedServiceChoice.READ_RANGE, invokeId);
-  baServices.readRange.encodeAcknowledge(buffer, objectId, baEnum.PropertyIdentifier.LOG_BUFFER, baEnum.ASN1_ARRAY_ALL, {bitsUsed: 3, value: [0]}, 2, rangeBuffer, baEnum.ReadRangeType.BY_POSITION, 1);
-  baBvlc.encode(buffer.buffer, baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU, buffer.offset);
-  client._transport.send(buffer.buffer, buffer.offset, receiver);
+  reply.complexAck((buffer) => baServices.readRange.encodeAcknowledge(
+    buffer,
+    objectId,
+    baEnum.PropertyIdentifier.LOG_BUFFER,
+    baEnum.ASN1_ARRAY_ALL,
+    {bitsUsed: 3, value: [0]},
+    2,
+    rangeBuffer,
+    baEnum.ReadRangeType.BY_POSITION,
+    1
+  ));
 }
 
 function installResponder(device) {
@@ -371,12 +370,12 @@ function installResponder(device) {
     device.iAmResponse(555003, baEnum.Segmentation.NO_SEGMENTATION, 999);
   });
   device.on('readProperty', (event) => {
-    device.readPropertyResponse(event.address, event.invokeId, event.request.objectId, event.request.property, [
+    event.reply.readProperty(event.request.objectId, event.request.property, [
       {type: baEnum.ApplicationTags.REAL, value: presentValue}
     ]);
   });
   device.on('readPropertyMultiple', (event) => {
-    device.readPropertyMultipleResponse(event.address, event.invokeId, [{
+    event.reply.readPropertyMultiple([{
       objectId: TEST_OBJECT,
       values: [{
         property: {id: baEnum.PropertyIdentifier.PRESENT_VALUE, index: baEnum.ASN1_ARRAY_ALL},
@@ -386,10 +385,10 @@ function installResponder(device) {
   });
   device.on('writeProperty', (event) => {
     presentValue = event.request.value.value[0].value;
-    device.simpleAckResponse(event.address, baEnum.ConfirmedServiceChoice.WRITE_PROPERTY, event.invokeId);
+    event.reply.simpleAck();
   });
   device.on('readRange', (event) => {
-    sendReadRangeResponse(device, event.address, event.invokeId, event.request.objectId);
+    sendReadRangeResponse(event.reply, event.request.objectId);
   });
 }
 

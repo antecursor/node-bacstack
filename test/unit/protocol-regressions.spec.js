@@ -172,7 +172,11 @@ describe('BACnet client protocol regressions', () => {
 
     context.client._processUnconfirmedServiceRequest('192.0.2.1', baEnum.PduTypes.UNCONFIRMED_REQUEST, baEnum.UnconfirmedServiceChoice.UTC_TIME_SYNCHRONIZATION, golden, 0, golden.length);
 
-    expect(event).to.deep.equal({address: '192.0.2.1', dateTime: new Date('2026-07-18T03:04:05.670Z')});
+    expect(event).to.deep.equal({
+      address: '192.0.2.1',
+      sourceAddress: '192.0.2.1',
+      dateTime: new Date('2026-07-18T03:04:05.670Z')
+    });
   });
 
   it('sends and publishes complete I-Have data through both event aliases', () => {

@@ -15,11 +15,18 @@ class Transport extends EventEmitter {
   getMaxPayload() {
     return 1482;
   }
-  send() { }
+  send() {
+    return true;
+  }
   open() { }
   close() { }
 }
 module.exports.transportStub = Transport;
+
+module.exports.createNoDeviceClient = () => new bacnet({
+  apduTimeout: 200,
+  transport: new Transport()
+});
 
 module.exports.propertyFormater = (object) => {
   const converted = {};

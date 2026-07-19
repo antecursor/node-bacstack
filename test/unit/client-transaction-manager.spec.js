@@ -185,6 +185,169 @@ describe('bacstack - Client transaction manager', () => {
     expect(transaction.settle(null, 'duplicate')).to.equal(false);
   });
 
+  it('preflights segmented responses and exposes immutable request policy', () => {
+    const {manager} = createManager();
+    const transaction = begin(manager, '10.0.0.1', null, {
+      responseMaxApdu: 480,
+      responseSegmentLimit: 16
+    });
+    const response = {
+      address: '10.0.0.1',
+      invokeId: transaction.invokeId,
+      pduType: PDUS.COMPLEX_ACK | 0x0C,
+      service: READ_PROPERTY
+    };
+
+    expect(manager.match(Object.assign({}, response, {address: '10.0.0.2'}))).to.equal(null);
+    expect(manager.match(Object.assign({}, response, {service: READ_PROPERTY + 1}))).to.equal(null);
+    expect(manager.match(Object.assign({}, response, {pduType: PDUS.SIMPLE_ACK}))).to.equal(null);
+    const policy = manager.match(response);
+    expect(policy).to.include({
+      invokeId: transaction.invokeId,
+      responseMaxApdu: 480,
+      responseSegmentDeadline: null,
+      responseSegmentLimit: 16,
+      service: READ_PROPERTY
+    });
+    expect(Object.isFrozen(policy)).to.equal(true);
+    expect(transaction).to.include({responseMaxApdu: 480, responseSegmentLimit: 16});
+    expect(transaction.active).to.equal(true);
+  });
+
+  it('hands request timing to one fixed segmented-response deadline', () => {
+    const {clock, manager} = createManager();
+    const calls = [];
+    const transaction = begin(manager, '10.0.0.1', (error) => calls.push(error), {
+      timeout: 25,
+      responseSegmentLimit: 8
+    });
+    const response = {
+      address: '10.0.0.1',
+      invokeId: transaction.invokeId,
+      pduType: PDUS.COMPLEX_ACK,
+      segmented: true,
+      service: READ_PROPERTY
+    };
+    clock.tick(20);
+    expect(manager.handoffSegmentedResponse(response, 1050)).to.equal(true);
+    expect(manager.match(response).responseSegmentDeadline).to.equal(1050);
+    expect(manager.handoffSegmentedResponse(response, 1050)).to.equal(true);
+    expect(manager.handoffSegmentedResponse(response, 1060)).to.equal(false);
+
+    clock.tick(5);
+    expect(calls).to.deep.equal([]);
+    expect(transaction.active).to.equal(true);
+    clock.tick(24);
+    expect(calls).to.deep.equal([]);
+    clock.tick(1);
+    expect(calls).to.have.length(1);
+    expect(calls[0]).to.have.property('code', 'ERR_TIMEOUT');
+    expect(transaction.active).to.equal(false);
+  });
+
+  it('does not accept an unsegmented success after segmented response handoff', () => {
+    const {manager} = createManager();
+    const calls = [];
+    const transaction = begin(manager, '10.0.0.1',
+      (error, result) => calls.push({error, result}));
+    const response = {
+      address: '10.0.0.1',
+      invokeId: transaction.invokeId,
+      pduType: PDUS.COMPLEX_ACK,
+      service: READ_PROPERTY,
+      segmented: true
+    };
+    expect(manager.handoffSegmentedResponse(response, 1050)).to.equal(true);
+
+    expect(manager.settle(Object.assign({}, response, {
+      result: 'unsegmented',
+      segmented: false
+    }))).to.equal(false);
+    expect(calls).to.deep.equal([]);
+    expect(transaction.active).to.equal(true);
+    expect(manager.settle(Object.assign({}, response, {result: 'reassembled'}))).to.equal(true);
+    expect(calls).to.deep.equal([{error: undefined, result: 'reassembled'}]);
+  });
+
+  it('hard-expires request and segmented-response deadlines when timer delivery is late', () => {
+    let now = 1000;
+    const callbacks = [];
+    const manager = new TransactionManager({
+      clearTimeout: () => {},
+      defaultTimeout: 25,
+      now: () => now,
+      setTimeout: () => 1
+    });
+    const first = begin(manager, '10.0.0.1', (error) => callbacks.push(error));
+    now = first.deadline;
+    expect(manager.settle({
+      address: '10.0.0.1',
+      invokeId: first.invokeId,
+      pduType: PDUS.COMPLEX_ACK,
+      result: 'late',
+      service: READ_PROPERTY
+    })).to.equal(false);
+    expect(callbacks[0]).to.have.property('code', 'ERR_TIMEOUT');
+
+    now = 2000;
+    const second = begin(manager, '10.0.0.2', (error) => callbacks.push(error));
+    const segmented = {
+      address: '10.0.0.2',
+      invokeId: second.invokeId,
+      pduType: PDUS.COMPLEX_ACK,
+      segmented: true,
+      service: READ_PROPERTY
+    };
+    expect(manager.handoffSegmentedResponse(segmented, 2050)).to.equal(true);
+    now = 2050;
+    expect(manager.settle(Object.assign({result: 'late segmented'}, segmented))).to.equal(false);
+    expect(callbacks[1]).to.have.property('code', 'ERR_TIMEOUT');
+  });
+
+  it('leaves the request timer active when segmented handoff setup fails', () => {
+    const clock = createClock();
+    let setups = 0;
+    const manager = new TransactionManager({
+      clearTimeout: clock.clearTimeout,
+      defaultTimeout: 25,
+      now: clock.now,
+      setTimeout: (callback, delay) => {
+        setups++;
+        if (setups === 2) throw new Error('handoff timer failed');
+        return clock.setTimeout(callback, delay);
+      }
+    });
+    const calls = [];
+    const transaction = begin(manager, '10.0.0.1', (error) => calls.push(error));
+    const response = {
+      address: '10.0.0.1',
+      invokeId: transaction.invokeId,
+      pduType: PDUS.COMPLEX_ACK,
+      service: READ_PROPERTY
+    };
+
+    expect(() => manager.handoffSegmentedResponse(response, 1050))
+      .to.throw('handoff timer failed');
+    clock.tick(25);
+    expect(calls).to.have.length(1);
+    expect(calls[0]).to.have.property('code', 'ERR_TIMEOUT');
+  });
+
+  it('validates stored segmented-response policy without reserving IDs', () => {
+    const {manager} = createManager();
+    expect(() => begin(manager, '10.0.0.1', null, {responseSegmentLimit: -1}))
+      .to.throw('ERR_INVALID_RESPONSE_SEGMENT_LIMIT')
+      .with.property('code', 'ERR_INVALID_RESPONSE_SEGMENT_LIMIT');
+    expect(() => begin(manager, '10.0.0.1', null, {responseMaxApdu: 0}))
+      .to.throw('ERR_INVALID_RESPONSE_MAX_APDU')
+      .with.property('code', 'ERR_INVALID_RESPONSE_MAX_APDU');
+    expect(manager.size).to.equal(0);
+    expect(begin(manager, '10.0.0.1', null, {
+      requestedInvokeId: 0,
+      responseSegmentLimit: 0
+    }).invokeId).to.equal(0);
+  });
+
   it('allows service-less abort responses only when their PDU is accepted', () => {
     const {manager} = createManager();
     const calls = [];
@@ -281,6 +444,47 @@ describe('bacstack - Client transaction manager', () => {
     expect(begin(manager, address, null, {requestedInvokeId: 0, timeout: 25}).invokeId).to.equal(0);
   });
 
+  it('extends invoke quarantine through segmented-response replay retention', () => {
+    const clock = createClock();
+    const manager = new TransactionManager({
+      clearTimeout: clock.clearTimeout,
+      defaultTimeout: 10,
+      now: clock.now,
+      segmentedResponseRetention: 30,
+      setTimeout: clock.setTimeout
+    });
+    const response = {
+      address: '10.0.0.1',
+      invokeId: 0,
+      pduType: PDUS.COMPLEX_ACK,
+      segmented: true,
+      service: READ_PROPERTY
+    };
+    const transaction = begin(manager, response.address, null, {
+      requestedInvokeId: 0,
+      timeout: 10
+    });
+    expect(manager.handoffSegmentedResponse(response, 1050)).to.equal(true);
+    expect(transaction.settle(null, 'complete')).to.equal(true);
+
+    clock.tick(10);
+    expect(() => begin(manager, response.address, null, {
+      requestedInvokeId: 0,
+      timeout: 10
+    })).to.throw('ERR_INVOKE_ID_QUARANTINED')
+      .with.property('code', 'ERR_INVOKE_ID_QUARANTINED');
+    clock.tick(19);
+    expect(() => begin(manager, response.address, null, {
+      requestedInvokeId: 0,
+      timeout: 10
+    })).to.throw('ERR_INVOKE_ID_QUARANTINED');
+    clock.tick(1);
+    expect(begin(manager, response.address, null, {
+      requestedInvokeId: 0,
+      timeout: 10
+    }).invokeId).to.equal(0);
+  });
+
   it('times out once with ERR_TIMEOUT and aborts the transaction signal', () => {
     const {clock, manager} = createManager();
     const calls = [];
@@ -324,6 +528,63 @@ describe('bacstack - Client transaction manager', () => {
     expect(cancelled.signal.aborted).to.equal(true);
     expect(cancelled.signal.reason).to.equal(reason);
     expect(cancelledCalls).to.deep.equal([{error: reason, result: undefined}]);
+
+    const rolledBackCalls = [];
+    const rolledBack = begin(manager, '10.0.0.1',
+      (error, result) => rolledBackCalls.push({error, result}));
+    const rollbackReason = new Error('send threw');
+    expect(rolledBack.rollback(rollbackReason)).to.equal(true);
+    expect(rolledBack.rollback(rollbackReason)).to.equal(false);
+    expect(rolledBack.signal.aborted).to.equal(true);
+    expect(rolledBack.signal.reason).to.equal(rollbackReason);
+    expect(rolledBackCalls).to.deep.equal([]);
+    expect(manager.size).to.equal(0);
+  });
+
+  it('supports external AbortSignals without sending or leaking state', async() => {
+    const {clock, manager} = createManager();
+    const alreadyAborted = new AbortController();
+    const earlyReason = new Error('cancel before begin');
+    const earlyCalls = [];
+    alreadyAborted.abort(earlyReason);
+
+    const inactive = begin(manager, '10.0.0.1',
+      (error, result) => earlyCalls.push({error, result}),
+      {signal: alreadyAborted.signal, requestedInvokeId: 7});
+
+    expect(inactive.active).to.equal(false);
+    expect(inactive.signal.aborted).to.equal(true);
+    expect(inactive.signal.reason).to.equal(earlyReason);
+    expect(manager.size).to.equal(0);
+    expect(clock.pending()).to.equal(0);
+    expect(earlyCalls).to.deep.equal([]);
+    await Promise.resolve();
+    expect(earlyCalls).to.deep.equal([{error: earlyReason, result: undefined}]);
+
+    const activeController = new AbortController();
+    const laterReason = new Error('cancel in flight');
+    const laterCalls = [];
+    const active = begin(manager, '10.0.0.1',
+      (error, result) => laterCalls.push({error, result}),
+      {signal: activeController.signal, requestedInvokeId: 7});
+    expect(active.active).to.equal(true);
+
+    activeController.abort(laterReason);
+    expect(active.active).to.equal(false);
+    expect(active.signal.aborted).to.equal(true);
+    expect(active.signal.reason).to.equal(laterReason);
+    expect(laterCalls).to.deep.equal([{error: laterReason, result: undefined}]);
+    expect(manager.size).to.equal(0);
+    expect(clock.pending()).to.equal(0);
+  });
+
+  it('rejects invalid AbortSignal shims without reserving an invoke ID', () => {
+    const {manager} = createManager();
+
+    expect(() => begin(manager, '10.0.0.1', null, {signal: {aborted: false}}))
+      .to.throw('ERR_INVALID_ABORT_SIGNAL').with.property('code', 'ERR_INVALID_ABORT_SIGNAL');
+    expect(manager.size).to.equal(0);
+    expect(begin(manager, '10.0.0.1', null, {requestedInvokeId: 0}).invokeId).to.equal(0);
   });
 
   it('cancels all transactions with ERR_CLIENT_CLOSED and clears timers', () => {
