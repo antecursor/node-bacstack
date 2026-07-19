@@ -66,11 +66,6 @@
       "count": 6
     }
   },
-  "test/unit/asn1.spec.js": {
-    "no-unused-vars": {
-      "count": 1
-    }
-  },
   "test/unit/service-write-property-multiple.spec.js": {
     "no-unused-vars": {
       "count": 2

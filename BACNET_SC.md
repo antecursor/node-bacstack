@@ -1,14 +1,14 @@
-# BACnet/SC experimental transport
+# BACnet/SC hub transport
 
 BACnet Secure Connect (BACnet/SC) is implemented as an alternative transport
 beneath the existing BACnet application and service layers. BACnet/IP remains
 the default.
 
 > [!WARNING]
-> This transport is an experimental node-to-hub implementation. It has not been
-> independently security-audited, certified, soak-tested for production, or
-> validated against an operational vendor hub. The current evidence is suitable
-> for controlled interoperability work, not a production-readiness claim.
+> This is a pre-release node-to-hub implementation. Its protocol and resource
+> handling have automated adversarial coverage, but it has not been independently
+> security-audited, certified, soak-tested, or validated against an operational
+> vendor hub. Do not describe it as a certified BACnet/SC implementation.
 
 ## Connection example
 
@@ -44,24 +44,46 @@ Accepted configuration includes:
 - `cert`, `key`, `ca`, or `pfx` as file paths, PEM text, Buffers, or (for `ca`)
   an array.
 - `passphrase`, `servername`, `tlsOptions`, `tlsVersion`, `tlsMinVersion`, and
-  `tlsMaxVersion` for TLS policy.
+  `tlsMaxVersion` for TLS policy. TLS 1.3 is the default and required unless
+  `allowInsecureTls: true` explicitly enables a wider version range.
+- `verifyServerIdentity` or `checkServerIdentity` for installation-directed
+  certificate name/identity policy. Supplying an explicit `servername` also
+  enables the standard Node.js hostname check unless
+  `verifyServerIdentity: false` is supplied.
 - `connectionWaitTimeout`, `webSocketWaitTimeout`, `heartbeatInterval`,
   `heartbeatTimeout`, `disconnectTimeout`, `reconnectMin`, and `reconnectMax`.
-- `sendQueueLimit`, `sendQueueTimeout`, `maxHandshakeBytes`, `maxFramePayload`,
-  and `maxBufferedBytes` for resource bounds.
+- `maxBvlc`/`maxBVLC` and `maxNpdu`/`maxNPDU` for advertised and enforced
+  protocol limits. Their defaults are 5705 and 1497 bytes respectively, which
+  leave room for the BACnet/SC minimum supported Data Options size.
+- `sendQueueLimit`, `sendQueueTimeout`, `maxHandshakeBytes`, and
+  `maxBufferedAmount`/`maxBufferedBytes` for resource bounds.
 
-`requireClientCertificate` defaults to `true` and TLS certificate validation is
-enabled unless `rejectUnauthorized: false` is explicitly supplied. Disabling
-certificate verification is unsafe and should be confined to disposable test
-setups. Plain `ws://` is rejected unless `allowPlain: true` is explicitly set;
+`requireClientCertificate` defaults to `true`. A WSS connection also requires
+an explicitly configured site `ca` store. The peer certificate must pass TLS
+validation and be signed directly by one of those CA certificates. In keeping
+with the BACnet/SC interoperability rules, Common Name and Subject Alternative
+Name matching are not performed by default. Enable that additional policy with
+`verifyServerIdentity: true`, an explicit `servername`, or a custom
+`checkServerIdentity` function when the installation requires it.
+
+`allowSystemTrust: true` replaces the BACnet/SC site-CA/direct-signer rule with
+the Node.js system trust store. `rejectUnauthorized: false` disables peer
+certificate verification entirely. Both are explicit, nonconformant escape
+hatches and should be confined to controlled compatibility work or disposable
+tests. Plain `ws://` is rejected unless `allowPlain: true` is explicitly set;
 it exists for isolated test fixtures and sends BACnet traffic without TLS.
 
 Retryable connection failures are emitted as `diagnostic` and `reconnect`
-events by default so failover does not create an unhandled `error` event. Set
+events by default so reconnect attempts do not create an unhandled `error`
+event. Set
 `emitTransientErrors: true` if the application is prepared to handle those as
 `error` events too. `client.getTransportStatus()` returns a snapshot containing
 connection state, current/configured hubs, VMAC/UUID, peer information, queued
-send count, reconnect state, timestamps, and latest diagnostic/error metadata.
+send count, reconnect state, primary-probe state, timestamps, and latest
+diagnostic/error metadata.
+The `close` event includes the received WebSocket status code, UTF-8 reason,
+and whether the shutdown was locally requested. Returned status objects are
+snapshots; changing one does not alter live transport limits or peer state.
 Do not expose that snapshot outside a trusted operations boundary without
 reviewing it for site information.
 
@@ -114,10 +136,10 @@ verified, and arrange a rollback before enabling the write.
 | --- | :---: | :---: |
 | WSS and mutual TLS | Yes | No; plain `ws://` only |
 | Connect/Accept and NPDU routing | Yes | Yes |
-| Heartbeat and clean disconnect | Indirect only; mock peer supports both, but no direct assertion | Indirect connection cleanup only |
+| Heartbeat and BACnet/WebSocket close handshakes | Yes | Indirect connection cleanup only |
 | Reconnect after dropped connection | Yes | No |
 | Primary/failover selection | Yes | No |
-| Missing client-certificate configuration rejected | Yes | No |
+| TLS 1.3, direct-site-CA, and opt-in hostname cases | Yes | No |
 | Who-Is / I-Am | Yes | Yes |
 | ReadProperty | Yes | Yes |
 | ReadPropertyMultiple | Yes | Yes |
@@ -183,19 +205,26 @@ or trust them outside a disposable test environment.
 - Connect-Request / Connect-Accept.
 - Encapsulated NPDU send and receive through the hub.
 - Heartbeat request/acknowledgment and disconnect request/acknowledgment.
-- Reconnect with backoff and ordered primary/failover selection.
-- Bounded pending-send queue and WebSocket handshake/frame buffers.
-- Agent-facing status, diagnostic, reconnect, open, close, and error events.
+- Reconnect with bounded backoff, primary-first recovery, failover selection,
+  background primary probes, and clean return from failover to primary.
+- Common-error BVLC-Result NAK behavior, Must-Understand option handling, and
+  hub-destination validation.
+- Standards-defined negative Address-Resolution responses when Direct Connect
+  is unavailable, Advertisement exchange, and explicit rejection of unsupported
+  proprietary messages.
+- Standards-tested WebSocket framing through the maintained `ws` package.
+- Bounded pending-send queue, WebSocket handshake, frame, and outbound buffers.
+- Application-facing status, diagnostic, reconnect, open, close, and error events.
 
 ## Known limitations
 
 - Hub, node-switch, router, and Direct Connect roles are not implemented.
-- Address resolution, advertisements, and secure-path header options are not
-  implemented beyond diagnostics for unsupported messages.
+- Address resolution reports that Direct Connect is unsupported, and
+  advertisements report that direct connections are not accepted. Data Options
+  are preserved in low-level transport message metadata, but the legacy client
+  API does not yet expose them on decoded service events.
 - VMACs are represented as 12-character lowercase hexadecimal strings in events
   and service address arguments.
-- WebSocket framing is implemented locally and has not received an independent
-  protocol/security audit.
 - The transport and application parser have not completed hostile-input fuzzing
   or long-running resource/reconnect soak testing.
 - Queued requests, transaction cancellation, invoke-ID concurrency, segmentation,

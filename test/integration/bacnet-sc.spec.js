@@ -88,7 +88,7 @@ function readClientFrame(buffer) {
   };
 }
 
-function writeServerFrame(socket, opcode, payload) {
+function writeServerFrame(socket, opcode, payload, callback) {
   let header;
   payload = payload || Buffer.alloc(0);
   if (payload.length < 126) {
@@ -99,7 +99,7 @@ function writeServerFrame(socket, opcode, payload) {
     header[1] = 126;
     header.writeUInt16BE(payload.length, 2);
   }
-  socket.write(Buffer.concat([header, payload]));
+  return socket.write(Buffer.concat([header, payload]), callback);
 }
 
 class MockScPeer extends EventEmitter {
@@ -111,8 +111,14 @@ class MockScPeer extends EventEmitter {
     this.frameBuffer = Buffer.alloc(0);
     this.ready = false;
     this.vmac = null;
+    this.receivedCloseCode = null;
+    this.receivedCloseReason = null;
+    this.receivedDisconnectRequestId = null;
     socket.on('data', (chunk) => this._onData(chunk));
-    socket.on('close', () => this.hub.removePeer(this));
+    socket.on('close', (hadError) => {
+      this.hub.removePeer(this);
+      this.emit('socket-close', hadError);
+    });
   }
 
   close() {
@@ -121,6 +127,10 @@ class MockScPeer extends EventEmitter {
 
   sendMessage(message) {
     writeServerFrame(this.socket, 0x02, sc.encode(message.function, message));
+  }
+
+  sendText(value) {
+    writeServerFrame(this.socket, 0x01, Buffer.from(value));
   }
 
   _onData(chunk) {
@@ -144,14 +154,15 @@ class MockScPeer extends EventEmitter {
       const index = line.indexOf(':');
       if (index !== -1) headers[line.slice(0, index).toLowerCase()] = line.slice(index + 1).trim();
     });
-    this.socket.write([
+    const responseHeaders = [
       'HTTP/1.1 101 Switching Protocols',
       'Upgrade: websocket',
       'Connection: Upgrade',
-      'Sec-WebSocket-Accept: ' + websocketAccept(headers['sec-websocket-key']),
-      'Sec-WebSocket-Protocol: hub.bsc.bacnet.org',
-      '\r\n'
-    ].join('\r\n'));
+      'Sec-WebSocket-Accept: ' + websocketAccept(headers['sec-websocket-key'])
+    ];
+    if (this.hub.subprotocol) responseHeaders.push('Sec-WebSocket-Protocol: ' + this.hub.subprotocol);
+    responseHeaders.push('\r\n');
+    this.socket.write(responseHeaders.join('\r\n'));
     this.ready = true;
     this.frameBuffer = this.handshakeBuffer.slice(headerEnd + marker.length);
     this.handshakeBuffer = Buffer.alloc(0);
@@ -163,8 +174,23 @@ class MockScPeer extends EventEmitter {
     while ((frame = readClientFrame(this.frameBuffer))) {
       this.frameBuffer = frame.remaining;
       if (frame.opcode === 0x02) this._handleMessage(sc.decode(frame.payload));
-      if (frame.opcode === 0x08) this.socket.end();
+      if (frame.opcode === 0x08) this._handleCloseFrame(frame.payload);
     }
+  }
+
+  _handleCloseFrame(payload) {
+    if (payload.length === 1) {
+      this.socket.destroy(new Error('Invalid WebSocket close payload'));
+      return;
+    }
+
+    this.receivedCloseCode = payload.length >= 2 ? payload.readUInt16BE(0) : null;
+    this.receivedCloseReason = payload.length >= 2 ? payload.slice(2).toString('utf8') : '';
+    this.emit('close-frame', {
+      code: this.receivedCloseCode,
+      reason: this.receivedCloseReason
+    });
+    writeServerFrame(this.socket, 0x08, payload, () => this.socket.end());
   }
 
   _handleMessage(message) {
@@ -191,8 +217,8 @@ class MockScPeer extends EventEmitter {
       return;
     }
     if (message.function === sc.FUNCTIONS.DISCONNECT_REQUEST) {
+      this.receivedDisconnectRequestId = message.id;
       this.sendMessage({function: sc.FUNCTIONS.DISCONNECT_ACK, id: message.id});
-      this.socket.end();
       return;
     }
     if (message.function === sc.FUNCTIONS.ENCAPSULATED_NPDU) {
@@ -205,6 +231,7 @@ class MockScHub {
   constructor() {
     this.vmac = '02000000abcd';
     this.uuid = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    this.subprotocol = 'hub.bsc.bacnet.org';
     this.peers = {};
     this.server = tls.createServer({
       key: readFixture('server.key'),
@@ -371,16 +398,18 @@ describe('bacstack - BACnet/SC integration', function() {
 
   let hub;
   let clients;
+  let extraHubs;
 
   beforeEach(() => {
     clients = [];
+    extraHubs = [];
     hub = new MockScHub();
     return hub.start();
   });
 
   afterEach(() => {
     clients.forEach((client) => client.close());
-    return hub.close();
+    return Promise.all([hub].concat(extraHubs).map((item) => item.close()));
   });
 
   it('connects to a BACnet/SC hub over WebSocket/TLS with mTLS', () => {
@@ -397,6 +426,19 @@ describe('bacstack - BACnet/SC integration', function() {
     });
   });
 
+  it('negotiates TLS 1.3 with the default BACnet/SC TLS settings', () => {
+    const client = createClient(hub, '020000000001');
+    clients.push(client);
+
+    return waitForEvent(client, 'open').then(() => {
+      const peer = hub.peers['020000000001'];
+      expect(peer.socket.authorized).to.equal(true);
+      expect(peer.socket.getProtocol()).to.equal('TLSv1.3');
+      expect(client._transport._socket._socket.authorized).to.equal(true);
+      expect(client._transport._socket._socket.getProtocol()).to.equal('TLSv1.3');
+    });
+  });
+
   it('fails fast without a configured client certificate', () => {
     const client = createClient(hub, '020000000001', {
       cert: undefined,
@@ -406,6 +448,106 @@ describe('bacstack - BACnet/SC integration', function() {
     clients.push(client);
     return waitForEvent(client, 'error').then((err) => {
       expect(err.code).to.equal('BACNET_SC_CLIENT_CERT_REQUIRED');
+    });
+  });
+
+  it('rejects a hub certificate that is not trusted by the configured CA set', () => {
+    const client = createClient(hub, '020000000001', {
+      ca: [],
+      reconnect: false
+    });
+    clients.push(client);
+
+    return waitForEvent(client, 'error').then((err) => {
+      expect(err.code).to.equal('BACNET_SC_CA_REQUIRED');
+      expect(err.message).to.match(/site CA certificate/i);
+      expect(client.getTransportStatus().connected).to.equal(false);
+    });
+  });
+
+  it('rejects a hub certificate for the wrong configured TLS server name', () => {
+    const client = createClient(hub, '020000000001', {
+      servername: 'wrong-host.invalid',
+      reconnect: false
+    });
+    clients.push(client);
+
+    return waitForEvent(client, 'error').then((err) => {
+      expect(err.code).to.equal('BACNET_SC_SOCKET_ERROR');
+      expect(err.message).to.match(/hostname|IP|altnames/i);
+      expect(client.getTransportStatus().connected).to.equal(false);
+    });
+  });
+
+  it('rejects a client certificate paired with the wrong private key', () => {
+    const client = createClient(hub, '020000000001', {
+      key: path.join(CERT_DIR, 'server.key'),
+      reconnect: false
+    });
+    clients.push(client);
+
+    return waitForEvent(client, 'error').then((err) => {
+      expect(err.message).to.match(/key values mismatch|private key/i);
+      expect(client.getTransportStatus().connected).to.equal(false);
+    });
+  });
+
+  it('rejects a hub that omits the required BACnet/SC WebSocket subprotocol', () => {
+    hub.subprotocol = null;
+    const client = createClient(hub, '020000000001', {reconnect: false});
+    clients.push(client);
+
+    return waitForEvent(client, 'error').then((err) => {
+      expect(err.code).to.equal('BACNET_SC_WEBSOCKET_PROTOCOL_MISMATCH');
+      expect(client.getTransportStatus().connected).to.equal(false);
+    });
+  });
+
+  it('rejects a text frame with an RFC6455 Close frame using status 1003', () => {
+    const client = createClient(hub, '020000000001', {reconnect: false});
+    clients.push(client);
+
+    return waitForEvent(client, 'open').then(() => {
+      const peer = hub.peers['020000000001'];
+      const error = waitForEvent(client, 'error');
+      const socketClosed = waitForEvent(peer, 'socket-close');
+      peer.sendText('not a BACnet/SC message');
+      return Promise.all([error, socketClosed]).then((results) => ({
+        err: results[0],
+        peer: peer
+      }));
+    }).then(({err, peer}) => {
+      expect(err.code).to.equal('BACNET_SC_TEXT_MESSAGE');
+      expect(peer.receivedCloseCode).to.equal(1003);
+      expect(peer.receivedCloseReason).to.be.a('string');
+    });
+  });
+
+  it('completes BACnet and WebSocket close handshakes on manual close', () => {
+    const client = createClient(hub, '020000000001', {reconnect: false});
+    clients.push(client);
+
+    return waitForEvent(client, 'open').then(() => {
+      const peer = hub.peers['020000000001'];
+      const closeFrame = waitForEvent(peer, 'close-frame');
+      const socketClosed = waitForEvent(peer, 'socket-close');
+      const clientClosed = waitForEvent(client, 'close');
+      client.close();
+      return Promise.all([closeFrame, socketClosed, clientClosed]).then((results) => ({
+        closeFrame: results[0],
+        peer: peer
+      }));
+    }).then(({closeFrame, peer}) => {
+      const status = client.getTransportStatus();
+      expect(peer.receivedDisconnectRequestId).to.be.within(1, 0xFFFF);
+      expect(closeFrame).to.deep.equal({code: 1000, reason: ''});
+      expect(peer.receivedCloseCode).to.equal(1000);
+      expect(peer.receivedCloseReason).to.equal('');
+      expect(status.state).to.equal('idle');
+      expect(status.connected).to.equal(false);
+      expect(status.webSocketReady).to.equal(false);
+      expect(status.peer).to.equal(null);
+      expect(status.lastDisconnectedAt).to.be.a('string');
     });
   });
 
@@ -427,6 +569,36 @@ describe('bacstack - BACnet/SC integration', function() {
       expect(status.hubIndex).to.equal(1);
       expect(diagnostics.some((event) => event.code === 'reconnect')).to.equal(true);
       expect(status.lastError.code).to.equal('BACNET_SC_SOCKET_ERROR');
+    });
+  });
+
+  it('keeps failover active while probing and then restores the primary hub', () => {
+    const failover = new MockScHub();
+    failover.vmac = '02000000abce';
+    extraHubs.push(failover);
+    hub.subprotocol = null;
+
+    return failover.start().then(() => {
+      const client = createClient(hub, '020000000001', {
+        hubUrl: undefined,
+        hubUrls: [hub.url, failover.url],
+        reconnectMin: 20,
+        reconnectMax: 40,
+        webSocketWaitTimeout: 500
+      });
+      clients.push(client);
+      return waitForEvent(client, 'open', 5000).then((peer) => {
+        expect(peer.vmac).to.equal(failover.vmac);
+        expect(client.getTransportStatus().hubIndex).to.equal(1);
+        hub.subprotocol = 'hub.bsc.bacnet.org';
+        return waitForEvent(client, 'open', 5000);
+      }).then((peer) => {
+        const status = client.getTransportStatus();
+        expect(peer.vmac).to.equal(hub.vmac);
+        expect(status.hubIndex).to.equal(0);
+        expect(status.connected).to.equal(true);
+        expect(status.primaryProbe).to.equal(null);
+      });
     });
   });
 

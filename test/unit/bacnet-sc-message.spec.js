@@ -36,6 +36,13 @@ describe('bacstack - BACnet/SC message layer', () => {
       maxBvlc: 1600,
       maxNpdu: 1497
     });
+
+    const defaults = sc.decodeConnectPayload(sc.encodeConnectPayload({
+      vmac: '020000000001',
+      uuid: '11111111-2222-4333-8444-555555555555'
+    }));
+    expect(defaults.maxBvlc).to.equal(5705);
+    expect(defaults.maxNpdu).to.equal(1497);
   });
 
   it('rejects malformed VMAC values', () => {
