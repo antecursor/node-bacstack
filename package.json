@@ -30,6 +30,7 @@
     "test:state-churn": "node scripts/soak-client-state.js",
     "integration": "npm run test:integration",
     "test:sc": "mocha test/integration/bacnet-sc.spec.js",
+    "test:sc:soak": "node --expose-gc scripts/soak-bacnet-sc.js",
     "test:sc:java": "./scripts/run-sc-java-fixture.sh",
     "test:sc:java:client": "node scripts/bacnet-sc-java-fixture-test.js",
     "compose:sc:up": "docker compose -f docker-compose.bacnet-sc.yml up --build -d",

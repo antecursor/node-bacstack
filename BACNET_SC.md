@@ -6,10 +6,11 @@ the default.
 
 > [!WARNING]
 > This is a pre-release node-to-hub implementation. Its protocol and resource
-> handling have automated adversarial coverage, but it has not been independently
-> security-audited, certified, subjected to long-duration operational soak
-> testing, or validated against an operational vendor hub. Do not describe it
-> as a certified BACnet/SC implementation.
+> handling have automated adversarial coverage and a project-owned operational
+> soak harness, but it has not been independently security-audited, certified,
+> supported by a reviewed long-duration soak result, or validated against an
+> operational vendor hub. Do not describe it as a certified BACnet/SC
+> implementation.
 
 ## Connection example
 
@@ -279,8 +280,9 @@ outside a disposable test environment.
 - VMACs are represented as 12-character lowercase hexadecimal strings in events
   and service address arguments.
 - The transport and application parser have deterministic hostile-input and
-  malformed-window tests, but have not completed long-running
-  coverage-guided fuzzing or resource/reconnect soak testing.
+  malformed-window tests. The repository also includes a repeatable
+  resource/reconnect soak harness, but no qualifying long-duration result or
+  long-running coverage-guided fuzz campaign has been reviewed yet.
 - Shared-client transaction, segmentation, and routed-address paths have
   automated coverage but still need operational routed-device and vendor-hub
   interoperability evidence.

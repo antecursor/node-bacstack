@@ -119,9 +119,11 @@ npm run test:coverage
 - [ ] **External/manual, claim gate:** run a long-duration reconnect,
   heartbeat-loss, failover/failback, cancellation, transaction, segmentation,
   and malformed-input soak with bounded memory, listeners, timers, queues, and
-  CPU. The repository's short synthetic churn harness does not satisfy this
-  gate; record the long-running harness and acceptance limits before checking
-  it.
+  CPU using `npm run test:sc:soak`. Its default campaign is 24 hours and writes
+  a machine-readable summary plus resource samples below
+  `reports/soak-bacnet-sc/`. A short smoke invocation or the synthetic state
+  churn check does not satisfy this gate; archive the command, report, samples,
+  environment, and reviewed acceptance limits before checking it.
 
 ## 5. BACnet/SC evidence
 
@@ -136,6 +138,21 @@ npm run test:sc
   primary/failover recovery, queue bounds, and clean close.
 - [ ] Label this as same-project integration evidence, not independent
   interoperability.
+
+### Project-owned operational soak
+
+```sh
+npm run test:sc:soak
+```
+
+- [ ] Run from an otherwise idle, monitored host with `global.gc` exposed by
+  the package command; record the exact commit, Node/npm versions, duration,
+  environment overrides, and output directory.
+- [ ] Review every check in `summary.json`, the complete `samples.jsonl`
+  timeline, fault counters, memory trend applicability, CPU ratio, event-loop
+  delay, high-water resource bounds, and clean-shutdown state.
+- [ ] Preserve the generated report with the release evidence. A passing short
+  integration smoke test proves harness operation, not long-duration stability.
 
 ### Pinned Java reference
 

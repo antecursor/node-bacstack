@@ -63,6 +63,7 @@ specified.
 | --- | --- | --- |
 | Unit tests | Local codec and service behavior for the covered fixtures | Independent wire correctness or device interoperability |
 | Integration tests | Client/service flow through mocked transports and a project-owned TLS BACnet/SC hub | Behavior with an independent product or vendor hub |
+| BACnet/SC soak harness | Repeated WSS/mTLS transactions, reconnect faults, failover/failback, cancellation, segmentation, malformed-frame containment, and bounded resource measurements | A production-readiness result until a qualifying long-duration run has completed and its report has been reviewed |
 | Java reference fixture | Who-Is/I-Am, ReadProperty, ReadPropertyMultiple, WriteProperty/readback, and ReadRange against a separate Java reference implementation | Vendor interoperability or WSS/mTLS interoperability; this fixture currently uses plain `ws://` inside its test network |
 | Legacy compliance container | A historical Who-Is check against a third-party device-emulator image | A current release gate; it is not part of the default CI workflow |
 

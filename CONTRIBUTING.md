@@ -87,6 +87,7 @@ npm run test:integration
 npm test
 npm run test:coverage
 npm run test:state-churn
+npm run test:sc:soak -- --help
 npm run verify
 ```
 
@@ -101,6 +102,10 @@ The evidence levels are intentionally named precisely:
 - **`npm run test:sc`** uses real TLS sockets and a project-owned mock BACnet/SC
   hub. It covers WSS/mTLS behavior, service routing, reconnect, and failover,
   but remains same-project evidence.
+- **`npm run test:sc:soak`** runs a 24-hour project-owned WSS/mTLS fault and
+  resource campaign by default. Its generated report supports operational
+  review, but short test invocations are only harness smoke tests and do not
+  establish long-duration stability.
 - **`npm run test:sc:java`** uses Docker and a separate Java reference stack. It
   currently verifies Who-Is/I-Am, ReadProperty, ReadPropertyMultiple,
   WriteProperty/readback, and ReadRange over plain WebSocket inside the test
