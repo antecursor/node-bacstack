@@ -39,6 +39,21 @@ blocked until every required and claim-gate item is complete.
 Use Node.js 22.13.0 or newer and npm 11.18.0, as declared in `package.json`.
 Start with the committed lockfile and do not repair it during the evidence run.
 
+The release-evidence utility refuses a dirty worktree, an abbreviated or
+unexpected commit ID, a changed lockfile, or the wrong npm version. It records
+each command's output and digest, retains and smoke-tests the exact package
+tarball, and writes a checksummed manifest below
+`reports/release-evidence/<candidate-sha>/`:
+
+```sh
+CANDIDATE_SHA=$(git rev-parse HEAD)
+npm run release:evidence -- --expected-sha "$CANDIDATE_SHA" --plan full
+```
+
+Use `--plan quick` only to rehearse the capture path. It omits commit lint,
+coverage and state-churn verification, dependency audits, hostile-input focus
+tests, and the Java reference fixture, so it is not complete release evidence.
+
 ```sh
 node --version
 npm --version
@@ -66,6 +81,9 @@ npm run test:sc
 - [ ] GitHub Actions passes on the exact commit for Node.js 22.x, 24.x, and 26.x
   plus the separate quality-gate job. A local pass is not a substitute for this
   clean-run evidence.
+- [ ] Archive the completed release-evidence directory, verify
+  `manifest.sha256`, and record its path and manifest digest at the top of this
+  checklist. A `-FAILED` directory is diagnostic evidence, not a passing run.
 
 ## 3. Dependency and supply-chain checks
 

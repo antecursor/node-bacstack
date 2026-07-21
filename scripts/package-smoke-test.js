@@ -70,6 +70,32 @@ function validatePackageListing(pack) {
   return paths;
 }
 
+function parseArgs(argv) {
+  if (argv.length === 0) return {tarball: null};
+  if (argv.length === 2 && argv[0] === '--tarball' && argv[1]) {
+    return {tarball: path.resolve(argv[1])};
+  }
+  throw new Error('Usage: node scripts/package-smoke-test.js [--tarball <path>]');
+}
+
+function requireRegularTarball(filePath) {
+  const stat = fs.lstatSync(filePath);
+  assert(stat.isFile() && !stat.isSymbolicLink(), 'provided package tarball must be a regular file');
+}
+
+function inspectTarball(tarball, projectRoot) {
+  requireRegularTarball(tarball);
+  const output = run(npmCommand(), [
+    'pack',
+    '--dry-run',
+    '--json',
+    tarball
+  ], {cwd: projectRoot});
+  const packs = JSON.parse(output);
+  assert.strictEqual(packs.length, 1, 'npm pack must inspect exactly one tarball');
+  return packs[0];
+}
+
 class SmokeTransport extends EventEmitter {
   constructor() {
     super();
@@ -149,22 +175,33 @@ function validateInstalledApi(api, manifest) {
   assert(transport.closed, manifest.name + ' did not close a custom transport');
 }
 
-function main() {
+function main(argv) {
+  const options = parseArgs(argv || process.argv.slice(2));
   const projectRoot = path.resolve(__dirname, '..');
   const manifest = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'));
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bacstack-package-smoke-'));
   try {
-    const packOutput = run(npmCommand(), [
-      'pack',
-      '--json',
-      '--pack-destination',
-      tempRoot
-    ], {cwd: projectRoot});
-    const packs = JSON.parse(packOutput);
-    assert.strictEqual(packs.length, 1, 'npm pack must produce exactly one tarball');
-    const packagedFiles = validatePackageListing(packs[0]);
-    const tarball = path.join(tempRoot, packs[0].filename);
-    assert(fs.existsSync(tarball), 'npm pack did not create the reported tarball');
+    let pack;
+    let tarball;
+    if (options.tarball) {
+      tarball = options.tarball;
+      pack = inspectTarball(tarball, projectRoot);
+    } else {
+      const packOutput = run(npmCommand(), [
+        'pack',
+        '--json',
+        '--pack-destination',
+        tempRoot
+      ], {cwd: projectRoot});
+      const packs = JSON.parse(packOutput);
+      assert.strictEqual(packs.length, 1, 'npm pack must produce exactly one tarball');
+      pack = packs[0];
+      tarball = path.join(tempRoot, pack.filename);
+      assert(fs.existsSync(tarball), 'npm pack did not create the reported tarball');
+    }
+    assert.strictEqual(pack.name, manifest.name, 'package name differs from package.json');
+    assert.strictEqual(pack.version, manifest.version, 'package version differs from package.json');
+    const packagedFiles = validatePackageListing(pack);
 
     const consumerRoot = path.join(tempRoot, 'consumer');
     fs.mkdirSync(consumerRoot);
@@ -182,11 +219,19 @@ function main() {
     process.stdout.write(JSON.stringify({
       package: manifest.name + '@' + manifest.version,
       packagedFiles: packagedFiles.length,
-      publicApi: 'ok'
+      publicApi: 'ok',
+      source: options.tarball ? 'provided-tarball' : 'fresh-pack'
     }) + '\n');
   } finally {
     fs.rmSync(tempRoot, {force: true, recursive: true});
   }
 }
 
-main();
+module.exports = {
+  inspectTarball: inspectTarball,
+  parseArgs: parseArgs,
+  validateInstalledApi: validateInstalledApi,
+  validatePackageListing: validatePackageListing
+};
+
+if (require.main === module) main();
