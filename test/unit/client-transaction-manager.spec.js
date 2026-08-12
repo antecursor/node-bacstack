@@ -393,7 +393,7 @@ describe('bacstack - Client transaction manager', () => {
     expect(calls).to.deep.equal([{error: undefined, result: 'response'}]);
   });
 
-  it('shares invoke-ID allocation across routed peers on one fallback link', () => {
+  it('allocates per routed source and rejects ambiguous link-only replies', () => {
     const {manager} = createManager({allowRoutedResponseFallback: true});
     const calls = [];
     const first = begin(manager, {ip: '10.0.0.254', net: 303, adr: [5]},
@@ -402,24 +402,25 @@ describe('bacstack - Client transaction manager', () => {
       (error, result) => calls.push({peer: 'second', error, result}));
 
     expect(first.invokeId).to.equal(0);
-    expect(second.invokeId).to.equal(1);
+    expect(second.invokeId).to.equal(0);
     expect(manager.settle({
       address: '10.0.0.254',
       invokeId: first.invokeId,
       pduType: PDUS.COMPLEX_ACK,
       result: 'first response',
       service: READ_PROPERTY
-    })).to.equal(true);
-    expect(calls).to.deep.equal([{peer: 'first', error: undefined, result: 'first response'}]);
-    expect(manager.size).to.equal(1);
+    })).to.equal(false);
+    expect(calls).to.deep.equal([]);
+    expect(manager.size).to.equal(2);
 
     expect(manager.settle({
-      address: '10.0.0.254',
+      address: {ip: '10.0.0.253', net: 303, adr: [5]},
       invokeId: first.invokeId,
       pduType: PDUS.COMPLEX_ACK,
-      result: 'late first response',
+      result: 'first response',
       service: READ_PROPERTY
-    })).to.equal(false);
+    })).to.equal(true);
+    expect(calls).to.deep.equal([{peer: 'first', error: undefined, result: 'first response'}]);
     expect(second.active).to.equal(true);
   });
 
@@ -429,7 +430,14 @@ describe('bacstack - Client transaction manager', () => {
     const routed = begin(manager, {ip: '10.0.0.254', net: 303, adr: [5]});
 
     expect(direct.invokeId).to.equal(0);
-    expect(routed.invokeId).to.equal(1);
+    expect(routed.invokeId).to.equal(0);
+    expect(manager.settle({
+      address: '10.0.0.254',
+      invokeId: 0,
+      pduType: PDUS.COMPLEX_ACK,
+      result: 'ambiguous',
+      service: READ_PROPERTY
+    })).to.equal(false);
     manager.cancelAll();
   });
 
@@ -447,7 +455,7 @@ describe('bacstack - Client transaction manager', () => {
 
   it('keeps routed invoke IDs unique across DNS service NAT and counter wrap', () => {
     const {manager} = createManager({allowRoutedResponseFallback: true});
-    const pending = begin(manager, {ip: 'bacnet-sim', net: 303, adr: [5]}, null, {
+    const pending = begin(manager, {ip: 'bacnet-sim', net: 304, adr: [6]}, null, {
       requestedInvokeId: 0
     });
 
@@ -465,6 +473,20 @@ describe('bacstack - Client transaction manager', () => {
 
     expect(pending.active).to.equal(true);
     expect(manager.size).to.equal(1);
+  });
+
+  it('supports more than 256 simultaneous requests across routed sources', () => {
+    const {manager} = createManager({allowRoutedResponseFallback: true});
+    const transactions = Array.from({length: 300}, (_unused, index) => begin(manager, {
+      ip: 'bacnet-sim',
+      net: 30000,
+      adr: [(index >> 8) & 0xFF, index & 0xFF]
+    }));
+
+    expect(transactions).to.have.length(300);
+    expect(transactions.every((transaction) => transaction.invokeId === 0)).to.equal(true);
+    expect(manager.size).to.equal(300);
+    manager.cancelAll();
   });
 
   it('rejects a changed router identity when the routed source does not match', () => {

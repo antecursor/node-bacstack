@@ -3,9 +3,10 @@
 ### Fixed
 
 - BACnet/IP destinations may use DNS hostnames. With routed-response fallback
-  enabled, invoke IDs are reserved across IP links so replies remain
-  unambiguous when service discovery or NAT changes the receive-side address,
-  including when the reply retains its routed network and MAC source.
+  enabled, invoke IDs are reserved by routed network/MAC source so replies
+  remain unambiguous when service discovery or NAT changes the receive-side
+  address without limiting all routed devices to one 256-ID pool. Link-only
+  replies are still accepted only when exactly one active request can match.
 - Unsegmented terminal responses release their invoke IDs immediately instead
   of limiting a busy link to 256 requests per APDU-timeout window. Timed-out,
   cancelled, rolled-back, and segmented transfers retain the existing
