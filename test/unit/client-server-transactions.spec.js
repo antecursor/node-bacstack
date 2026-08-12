@@ -97,7 +97,7 @@ function confirmedRequest(options) {
   baNpdu.encode(
     buffer,
     baEnum.NpduControlPriority.NORMAL_MESSAGE,
-    null,
+    options.destination || null,
     options.source || null
   );
   baApdu.encodeConfirmedServiceRequest(
@@ -201,6 +201,27 @@ describe('bacstack - inbound confirmed-request transaction cache', () => {
       invokeId: 8,
       service: WRITE_PROPERTY
     });
+  });
+
+  it('isolates identical invoke IDs and payloads by routed local destination', () => {
+    const current = createClient();
+    const requests = [];
+    current.client.on('writeProperty', (request) => {
+      requests.push(request);
+      request.reply.simpleAck();
+    });
+    const base = {invokeId: 80, payload: writePropertyPayload(2.5)};
+
+    current.transport.receive(confirmedRequest(Object.assign({}, base, {
+      destination: {net: 30000, adr: [1]}
+    })), '192.0.2.80');
+    current.transport.receive(confirmedRequest(Object.assign({}, base, {
+      destination: {net: 30000, adr: [2]}
+    })), '192.0.2.80');
+
+    expect(requests).to.have.length(2);
+    expect(current.transport.sent).to.have.length(2);
+    expect(requests.map((request) => request.invokeId)).to.deep.equal([80, 80]);
   });
 
   it('retains a replayable response when the first transport send returns false', () => {

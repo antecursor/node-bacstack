@@ -11,6 +11,9 @@
   of limiting a busy link to 256 requests per APDU-timeout window. Timed-out,
   cancelled, rolled-back, and segmented transfers retain the existing
   late-response quarantine.
+- Inbound server transactions include a routed request's local DNET/DADR in
+  their replay identity, allowing one router or simulator socket to serve
+  multiple routed devices that concurrently reuse the same invoke ID.
 
 # 0.1.0-rc.1 (2026-07-18)
 
