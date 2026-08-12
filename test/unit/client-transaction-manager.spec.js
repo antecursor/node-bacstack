@@ -436,8 +436,12 @@ describe('bacstack - Client transaction manager', () => {
   it('releases response-completed invoke IDs without waiting for the APDU timeout', () => {
     const {manager} = createManager({allowRoutedResponseFallback: true});
     const address = {ip: '10.0.0.254', net: 303, adr: [5]};
-    const transaction = begin(manager, address, null, {requestedInvokeId: 0, timeout: 25});
+    const transaction = begin(manager, address, null, {timeout: 25});
+    expect(transaction.invokeId).to.equal(0);
     expect(transaction.settle(null, 'done')).to.equal(true);
+    const next = begin(manager, address, null, {timeout: 25});
+    expect(next.invokeId).to.equal(1);
+    expect(next.settle(null, 'next')).to.equal(true);
     expect(begin(manager, address, null, {requestedInvokeId: 0, timeout: 25}).invokeId).to.equal(0);
   });
 
