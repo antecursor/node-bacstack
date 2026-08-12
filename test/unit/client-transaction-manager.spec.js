@@ -433,15 +433,34 @@ describe('bacstack - Client transaction manager', () => {
     manager.cancelAll();
   });
 
-  it('quarantines completed invoke IDs against late-response reuse', () => {
-    const {clock, manager} = createManager({allowRoutedResponseFallback: true});
+  it('releases response-completed invoke IDs without waiting for the APDU timeout', () => {
+    const {manager} = createManager({allowRoutedResponseFallback: true});
     const address = {ip: '10.0.0.254', net: 303, adr: [5]};
     const transaction = begin(manager, address, null, {requestedInvokeId: 0, timeout: 25});
     expect(transaction.settle(null, 'done')).to.equal(true);
-    expect(() => begin(manager, address, null, {requestedInvokeId: 0, timeout: 25}))
-      .to.throw('ERR_INVOKE_ID_QUARANTINED').with.property('code', 'ERR_INVOKE_ID_QUARANTINED');
-    clock.tick(25);
     expect(begin(manager, address, null, {requestedInvokeId: 0, timeout: 25}).invokeId).to.equal(0);
+  });
+
+  it('keeps routed invoke IDs unique across DNS service NAT and counter wrap', () => {
+    const {manager} = createManager({allowRoutedResponseFallback: true});
+    const pending = begin(manager, {ip: 'bacnet-sim', net: 303, adr: [5]}, null, {
+      requestedInvokeId: 0
+    });
+
+    for (let index = 0; index < 300; index++) {
+      const transaction = begin(manager, {ip: 'bacnet-sim', net: 304, adr: [6]});
+      expect(transaction.invokeId).not.to.equal(pending.invokeId);
+      expect(manager.settle({
+        address: '10.0.0.254',
+        invokeId: transaction.invokeId,
+        pduType: PDUS.COMPLEX_ACK,
+        result: index,
+        service: READ_PROPERTY
+      })).to.equal(true);
+    }
+
+    expect(pending.active).to.equal(true);
+    expect(manager.size).to.equal(1);
   });
 
   it('extends invoke quarantine through segmented-response replay retention', () => {

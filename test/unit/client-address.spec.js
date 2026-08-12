@@ -94,15 +94,19 @@ describe('bacstack - Client address normalization', () => {
     expect(linkKey(first)).to.equal(linkKey(second));
   });
 
-  it('canonicalizes IPv6 and rejects names that cannot match receive-side IPs', () => {
+  it('canonicalizes IPv6 and DNS hostnames', () => {
     expect(addressKey('2001:0db8:0:0:0:0:0:1')).to.equal(addressKey('2001:db8::1'));
-    expect(() => normalizeAddress('example.local')).to.throw('ERR_INVALID_ADDRESS');
+    expect(addressKey('BACnet-Sim.')).to.equal(addressKey('bacnet-sim'));
+    expect(addressKey('Router.Example.Local')).to.equal(addressKey('router.example.local'));
   });
 
   it('rejects incomplete, ambiguous, and out-of-range addresses', () => {
     const invalid = [
       null,
       '',
+      '999.999.999.999',
+      '-router.example',
+      'router-.example',
       {},
       {ip: '10.0.0.1', net: 1},
       {ip: '10.0.0.1', adr: [1]},

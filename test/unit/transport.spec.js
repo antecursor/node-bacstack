@@ -12,6 +12,7 @@ describe('bacstack - UDP transport', () => {
     expect(transport.getAddressKind()).to.equal('ip');
     expect(transport.getIpVersion()).to.equal(4);
     expect(transport.supportsAddress('192.0.2.10')).to.equal(true);
+    expect(transport.supportsAddress('bacnet-sim')).to.equal(true);
     expect(transport.supportsAddress('2001:db8::10')).to.equal(false);
     transport.close();
   });
@@ -111,6 +112,17 @@ describe('bacstack - UDP transport', () => {
       '192.0.2.10',
       {destinationPort: 0}
     )).to.throw().with.property('code', 'ERR_INVALID_PORT');
+    transport.close();
+  });
+
+  it('passes DNS destinations to the UDP socket for asynchronous resolution', () => {
+    const transport = new Transport({port: 0});
+    const calls = [];
+    transport._server.send = (...args) => calls.push(args);
+
+    transport.send(Buffer.from([1]), 1, 'bacnet-sim');
+
+    expect(calls[0][4]).to.equal('bacnet-sim');
     transport.close();
   });
 
