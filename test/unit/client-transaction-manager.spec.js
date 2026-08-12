@@ -455,7 +455,7 @@ describe('bacstack - Client transaction manager', () => {
       const transaction = begin(manager, {ip: 'bacnet-sim', net: 304, adr: [6]});
       expect(transaction.invokeId).not.to.equal(pending.invokeId);
       expect(manager.settle({
-        address: '10.0.0.254',
+        address: {ip: '10.0.0.254', net: 304, adr: [6]},
         invokeId: transaction.invokeId,
         pduType: PDUS.COMPLEX_ACK,
         result: index,
@@ -465,6 +465,20 @@ describe('bacstack - Client transaction manager', () => {
 
     expect(pending.active).to.equal(true);
     expect(manager.size).to.equal(1);
+  });
+
+  it('rejects a changed router identity when the routed source does not match', () => {
+    const {manager} = createManager({allowRoutedResponseFallback: true});
+    const transaction = begin(manager, {ip: 'bacnet-sim', net: 304, adr: [6]});
+
+    expect(manager.settle({
+      address: {ip: '10.0.0.254', net: 305, adr: [6]},
+      invokeId: transaction.invokeId,
+      pduType: PDUS.COMPLEX_ACK,
+      result: 'wrong route',
+      service: READ_PROPERTY
+    })).to.equal(false);
+    expect(transaction.active).to.equal(true);
   });
 
   it('extends invoke quarantine through segmented-response replay retention', () => {
